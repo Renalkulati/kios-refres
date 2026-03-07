@@ -32,7 +32,7 @@ export function Splash({ onDone }) {
 }
 
 /* ══════ NAVBAR ══════ */
-export function Navbar({ cartCount, page, setPage, q, setQ }) {
+export function Navbar({ cartCount, page, setPage, q, setQ, customer, onLogout }) {
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
     const h = () => setScrolled(window.scrollY > 6);
@@ -57,6 +57,14 @@ export function Navbar({ cartCount, page, setPage, q, setQ }) {
           🛒
           {cartCount>0 && <span style={{background:"#EF4444",color:"#fff",borderRadius:99,minWidth:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,padding:"0 4px",animation:"pop .3s ease"}}>{cartCount}</span>}
         </button>
+        {customer && (
+          <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+            <div style={{width:30,height:30,borderRadius:"50%",background:"rgba(255,255,255,0.25)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:13,color:"#fff",border:"1.5px solid rgba(255,255,255,0.4)"}}>
+              {customer.username[0].toUpperCase()}
+            </div>
+            <button onClick={onLogout} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,padding:"4px 9px",cursor:"pointer",color:"rgba(255,255,255,0.85)",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>Keluar</button>
+          </div>
+        )}
       </div>
     </nav>
   );
@@ -761,15 +769,22 @@ export function Success({ order, onHome }) {
 }
 
 /* ══════ ORDERS PAGE ══════ */
-export function Orders({ orders, onBack }) {
+export function Orders({ orders, onBack, customer }) {
+  // orders sudah difilter per customer dari App.jsx (fetchMyOrders)
   return (
     <div style={{maxWidth:680,margin:"0 auto",padding:"20px 16px 90px"}}>
       <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:"#2563EB",fontWeight:800,fontSize:13,marginBottom:16}}>← Kembali</button>
       <h2 style={{fontWeight:900,marginBottom:18,fontSize:18}}>📦 Riwayat Pesanan</h2>
+      {customer && (
+        <div style={{background:"#EFF6FF",borderRadius:11,padding:"9px 13px",marginBottom:14,display:"flex",alignItems:"center",gap:7}}>
+          <span style={{fontSize:14}}>👤</span>
+          <p style={{fontSize:12,color:"#1D4ED8",fontWeight:700}}>Pesanan untuk: <strong>{customer.username}</strong></p>
+        </div>
+      )}
       {!orders.length
         ? <Empty icon="📦" title="Belum ada pesanan" desc="Pesanan Anda akan tampil di sini"/>
         : <div style={{display:"flex",flexDirection:"column",gap:11}}>
-            {[...orders].reverse().map(o=>(
+            {[...orders].map(o=>(
               <div key={o.order_id} className="card anim-fadeUp" style={{padding:17}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:11}}>
                   <div>

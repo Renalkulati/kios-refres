@@ -92,3 +92,55 @@ export function subscribeProducts(onChange) {
       console.log("[Supabase Realtime Products]", channelName, status);
     });
 }
+
+/* ══════ CUSTOMER AUTH ══════ */
+
+// Daftar akun baru
+export async function registerCustomer({ username, phone, password }) {
+  // Cek username sudah ada
+  const { data: existing } = await supabase
+    .from("customers")
+    .select("id")
+    .eq("username", username)
+    .single();
+  if (existing) throw new Error("Username sudah dipakai, coba yang lain");
+
+  // Cek phone sudah ada
+  const { data: existPhone } = await supabase
+    .from("customers")
+    .select("id")
+    .eq("phone", phone)
+    .single();
+  if (existPhone) throw new Error("Nomor HP sudah terdaftar");
+
+  const { data, error } = await supabase
+    .from("customers")
+    .insert([{ username, phone, password }])
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// Login customer
+export async function loginCustomer({ username, password }) {
+  const { data, error } = await supabase
+    .from("customers")
+    .select("*")
+    .eq("username", username)
+    .eq("password", password)
+    .single();
+  if (error || !data) throw new Error("Username atau password salah");
+  return data;
+}
+
+// Ambil pesanan milik customer tertentu
+export async function fetchMyOrders(customerId) {
+  const { data, error } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("customer_id", customerId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
