@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useToast, ToastBox, Spinner } from "./components/ui/index.jsx";
 import { Splash, Navbar, Home, Detail, Cart, Checkout, Success, Orders, BottomNav } from "./components/customer/index.jsx";
 import { LoginPage, AdminApp } from "./components/admin/index.jsx";
@@ -20,6 +20,7 @@ export default function App() {
   const toast = useToast();
   const cartN = cart.reduce((s,i) => s+i.qty, 0);
 
+  // Load awal
   useEffect(() => {
     async function loadAll() {
       try {
@@ -38,24 +39,59 @@ export default function App() {
     loadAll();
   }, []);
 
+  // Subscribe realtime
   useEffect(() => {
     if (dbError) return;
+
     const orderCh = subscribeOrders(
+      // Pesanan BARU masuk
       (n) => {
         setOrders(prev => {
           if (prev.find(o => o.order_id === n.order_id)) return prev;
-          toast.add("📦 Pesanan baru dari " + n.customer_name + "!", "info");
           return [n, ...prev];
         });
       },
-      (u) => setOrders(prev => prev.map(o => o.order_id===u.order_id ? u : o))
+      // Status pesanan di-UPDATE oleh admin → langsung update di sisi customer
+      (updated) => {
+        setOrders(prev => prev.map(o =>
+          o.order_id === updated.order_id ? { ...o, ...updated } : o
+        ));
+        // Update juga halaman sukses kalau masih dibuka
+        setLast(prev => {
+          if (!prev || prev.order_id !== updated.order_id) return prev;
+          return { ...prev, ...updated };
+        });
+        // Notifikasi ke pembeli kalau sedang di halaman pesanan
+        const statusLabel = {
+          dikirim:    "🚚 Pesanan Anda sedang dikirim!",
+          selesai:    "✅ Pesanan Anda telah selesai!",
+          dibatalkan: "❌ Pesanan Anda dibatalkan.",
+        };
+        if (statusLabel[updated.order_status]) {
+          toast.add(statusLabel[updated.order_status], updated.order_status === "dibatalkan" ? "err" : "ok");
+        }
+      }
     );
+
     const prodCh = subscribeProducts((payload) => {
       if (payload.eventType==="UPDATE") setProducts(p => p.map(x => x.id===payload.new.id ? payload.new : x));
       if (payload.eventType==="INSERT") setProducts(p => [...p, payload.new]);
       if (payload.eventType==="DELETE") setProducts(p => p.filter(x => x.id!==payload.old.id));
     });
+
     return () => { orderCh.unsubscribe(); prodCh.unsubscribe(); };
+  }, [dbError]);
+
+  // Refresh pesanan dari DB saat pembeli buka halaman "Pesanan"
+  const handleSetPage = useCallback(async (p) => {
+    setPage(p);
+    if (p === "home") setQ("");
+    if (p === "orders" && !dbError) {
+      try {
+        const fresh = await fetchOrders();
+        setOrders(fresh || []);
+      } catch { /* pakai data yang ada */ }
+    }
   }, [dbError]);
 
   const addCart = (p, qty=1) => {
@@ -116,16 +152,16 @@ export default function App() {
           ⚠️ Mode Offline — Hubungkan Supabase untuk sinkronisasi real-time antar device
         </div>
       )}
-      <Navbar cartCount={cartN} page={page} setPage={p=>{setPage(p);if(p==="home")setQ("");}} q={q} setQ={v=>{setQ(v);if(page!=="home")setPage("home");}}/>
+      <Navbar cartCount={cartN} page={page} setPage={handleSetPage} q={q} setQ={v=>{setQ(v);if(page!=="home")setPage("home");}}/>
       <main style={{paddingBottom:70}}>
         {page==="home"     && <Home products={products} onDetail={p=>{setProduct(p);setPage("detail");}} onAdd={addCart} q={q}/>}
         {page==="detail"   && product && <Detail p={product} onBack={()=>setPage("home")} onAdd={addCart} onBuy={(p,qty)=>{setCart([{...p,qty}]);setPage("checkout");}}/>}
         {page==="cart"     && <Cart cart={cart} onQty={updQty} onRemove={id=>setCart(p=>p.filter(i=>i.id!==id))} onCheckout={()=>setPage("checkout")} onBack={()=>setPage("home")}/>}
         {page==="checkout" && <Checkout cart={cart} onBack={()=>setPage("cart")} onSuccess={onSuccess}/>}
-        {page==="success"  && last && <Success order={last} onHome={()=>setPage("home")}/>}
-        {page==="orders"   && <Orders orders={orders} onBack={()=>setPage("home")}/>}
+        {page==="success"  && last && <Success order={last} onHome={()=>handleSetPage("home")}/>}
+        {page==="orders"   && <Orders orders={orders} onBack={()=>handleSetPage("home")}/>}
       </main>
-      <BottomNav page={page} setPage={setPage} n={cartN}/>
+      <BottomNav page={page} setPage={handleSetPage} n={cartN}/>
       <button onClick={()=>setMode("adminLogin")} title="Admin" style={{position:"fixed",bottom:78,right:14,width:42,height:42,borderRadius:"50%",background:"#0F172A",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,boxShadow:"0 4px 16px rgba(0,0,0,0.22)",zIndex:80,opacity:.65,transition:"opacity .2s"}} onMouseEnter={e=>e.currentTarget.style.opacity=1} onMouseLeave={e=>e.currentTarget.style.opacity=.65}>⚙️</button>
     </div>
   );
