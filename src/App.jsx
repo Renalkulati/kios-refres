@@ -139,8 +139,8 @@ export default function App() {
     const fullOrder = {
       ...order,
       customer_id:   customer?.id || null,
-      customer_name: customer?.username || order.customer_name,
-      phone:         customer?.phone || order.phone,
+      customer_name: order.customer_name,  // pakai nama lengkap dari form checkout
+      phone:         order.phone,          // pakai nomor dari form checkout
     };
     try {
       if (!dbError) {
