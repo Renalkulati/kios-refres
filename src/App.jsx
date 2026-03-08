@@ -215,10 +215,6 @@ export default function App() {
       </main>
 
       <BottomNav page={page} setPage={handleSetPage} n={cartN}/>
-      <button onClick={()=>setMode("adminLogin")} title="Admin"
-        style={{position:"fixed",bottom:78,right:14,width:42,height:42,borderRadius:"50%",background:"#0F172A",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,boxShadow:"0 4px 16px rgba(0,0,0,0.22)",zIndex:80,opacity:.65,transition:"opacity .2s"}}
-        onMouseEnter={e=>e.currentTarget.style.opacity=1}
-        onMouseLeave={e=>e.currentTarget.style.opacity=.65}>⚙️</button>
     </div>
   );
 }
