@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS products (
   id         BIGSERIAL PRIMARY KEY,
   name       TEXT NOT NULL,
   price      INTEGER NOT NULL DEFAULT 0,
-  desc       TEXT,
+  description TEXT,
   img        TEXT,
   stock      INTEGER NOT NULL DEFAULT 0,
   cat        TEXT,
@@ -72,7 +72,7 @@ CREATE POLICY "products_delete_all" ON products
   FOR DELETE USING (true);
 
 -- ── ISI DATA PRODUK AWAL ──
-INSERT INTO products (name, price, desc, img, stock, cat, sold, rating) VALUES
+INSERT INTO products (name, price, description, img, stock, cat, sold, rating) VALUES
 ('Aqua Galon 19L', 22000, 'Air mineral berkualitas tinggi dalam kemasan galon 19L. Segar dan bersih untuk keluarga.', 'https://images.unsplash.com/photo-1548839140-29a749e1cf4d?w=500&h=500&fit=crop', 50, 'Minuman', 320, 4.9),
 ('Teh Botol Sosro 450ml', 5000, 'Teh manis segar dalam botol 450ml. Rasa original ikonik yang selalu menyegarkan kapan saja.', 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=500&h=500&fit=crop', 100, 'Minuman', 580, 4.8),
 ('Indomie Goreng (Pack 5)', 16000, 'Mie instan goreng terpopuler Indonesia. Pack 5 bungkus, praktis dan ekonomis.', 'https://images.unsplash.com/photo-1569050467447-ce54b3bbc37d?w=500&h=500&fit=crop', 80, 'Makanan Instan', 410, 4.9),

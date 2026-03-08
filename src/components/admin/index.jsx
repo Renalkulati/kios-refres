@@ -355,7 +355,8 @@ function OrdersMgmt({ orders, setOrders, toast }) {
     (o.order_id.toLowerCase().includes(search.toLowerCase())||o.customer_name.toLowerCase().includes(search.toLowerCase()))
   );
 
-  const updateStatus = (id, s) => {
+  const updateStatus = async (id, s) => {
+    try { const { updateOrderStatus } = await import("../lib/db.js"); await updateOrderStatus(id, s); } catch(e) { console.error("Update status error:", e); }
     setOrders(p=>p.map(o=>o.order_id===id?{...o,order_status:s}:o));
     toast.add(`Status diperbarui ke "${s}"`);
     if(detail?.order_id===id) setDetail(p=>({...p,order_status:s}));
@@ -501,12 +502,43 @@ function Settings({ user, toast }) {
 }
 
 /* ══════ ADMIN APP (entry) ══════ */
-export function AdminApp({ user, onLogout, products, setProducts, orders, setOrders }) {
-  const [menu,  setMenu]  = useState("dashboard");
-  const [sOpen, setSOpen] = useState(false);
+export function AdminApp({ user, onLogout, products, setProducts, dbError }) {
+  const [menu,   setMenu]   = useState("dashboard");
+  const [sOpen,  setSOpen]  = useState(false);
+  const [orders, setOrders] = useState([]);
+  const [loadingOrders, setLoadingOrders] = useState(true);
   const toast = useToast();
 
   const titles = {dashboard:"📊 Dashboard",products:"📦 Manajemen Produk",orders:"🧾 Manajemen Pesanan",settings:"⚙️ Pengaturan"};
+
+  useEffect(() => {
+    let cleanup = ()=>{};
+    async function load() {
+      try {
+        const { fetchOrders, subscribeOrders } = await import("../lib/db.js");
+        const data = await fetchOrders();
+        setOrders(data || []);
+        setLoadingOrders(false);
+        const ch = subscribeOrders(
+          (n) => {
+            setOrders(prev => {
+              if (prev.find(o => o.order_id === n.order_id)) return prev;
+              toast.add("🔔 Pesanan baru dari " + n.customer_name + "!", "info");
+              return [n, ...prev];
+            });
+          },
+          (u) => setOrders(prev => prev.map(o => o.order_id===u.order_id ? u : o))
+        );
+        cleanup = () => ch.unsubscribe();
+      } catch(e) {
+        console.error("Admin load error:", e);
+        setLoadingOrders(false);
+        toast.add("Gagal memuat pesanan", "err");
+      }
+    }
+    load();
+    return () => cleanup();
+  }, []);
 
   return (
     <div className="admin-layout">
@@ -515,10 +547,24 @@ export function AdminApp({ user, onLogout, products, setProducts, orders, setOrd
       <div className="admin-main">
         <Topbar title={titles[menu]||"Dashboard"} onMenu={()=>setSOpen(p=>!p)} user={user}/>
         <div style={{background:"#F0F4FF",minHeight:"calc(100vh - 56px)"}}>
-          {menu==="dashboard" && <Dashboard products={products} orders={orders}/>}
-          {menu==="products"  && <ProductsMgmt products={products} setProducts={setProducts} toast={toast}/>}
-          {menu==="orders"    && <OrdersMgmt orders={orders} setOrders={setOrders} toast={toast}/>}
-          {menu==="settings"  && <Settings user={user} toast={toast}/>}
+          {!dbError && (
+            <div style={{background:"#D1FAE5",borderBottom:"1px solid #6EE7B7",padding:"6px 18px",fontSize:12,fontWeight:700,color:"#065F46",display:"flex",alignItems:"center",gap:6}}>
+              <span style={{width:7,height:7,borderRadius:"50%",background:"#10B981",display:"inline-block"}}/>
+              Terhubung — Pesanan baru muncul otomatis real-time
+            </div>
+          )}
+          {loadingOrders
+            ? <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:60,gap:14,flexDirection:"column"}}>
+                <Spinner size={36}/>
+                <p style={{fontWeight:700,color:"#64748B"}}>Memuat pesanan dari database...</p>
+              </div>
+            : <>
+                {menu==="dashboard" && <Dashboard products={products} orders={orders}/>}
+                {menu==="products"  && <ProductsMgmt products={products} setProducts={setProducts} toast={toast}/>}
+                {menu==="orders"    && <OrdersMgmt orders={orders} setOrders={setOrders} toast={toast}/>}
+                {menu==="settings"  && <Settings user={user} toast={toast}/>}
+              </>
+          }
         </div>
       </div>
     </div>
