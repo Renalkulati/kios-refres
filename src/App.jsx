@@ -220,7 +220,7 @@ export default function App() {
         {page==="detail"   && product && <Detail p={product} onBack={()=>setPage("home")} onAdd={addCart} onBuy={(p,qty)=>{setCart([{...p,qty}]);setPage("checkout");}}/>}
         {page==="cart"     && <Cart cart={cart} onQty={updQty} onRemove={id=>setCart(p=>p.filter(i=>i.id!==id))} onCheckout={()=>setPage("checkout")} onBack={()=>setPage("home")}/>}
         {page==="checkout" && <Checkout cart={cart} onBack={()=>setPage("cart")} onSuccess={onSuccess} customer={customer} settings={settings}/>}
-        {page==="success"  && last && <Success order={last} onHome={()=>handleSetPage("home")}/>}
+        {page==="success"  && last && <Success order={last} onHome={()=>handleSetPage("home")} settings={settings}/>}
         {page==="orders"   && <Orders orders={myOrders} onBack={()=>handleSetPage("home")} customer={customer} waNumber={settings.wa_number} waName={settings.wa_name}/>}
       </main>
 

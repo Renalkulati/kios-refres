@@ -282,7 +282,7 @@ export function Cart({ cart, onQty, onRemove, onCheckout, onBack }) {
 }
 
 /* ══════ CHECKOUT PAGE ══════ */
-export function Checkout({ cart, onBack, onSuccess, customer }) {
+export function Checkout({ cart, onBack, onSuccess, customer, settings }) {
   const [step,      setStep]     = useState(1);
   const [meth,      setMeth]     = useState("");
   const [form,      setForm]     = useState({name: customer?.username||"", phone: customer?.phone||"", address:"", city:""});
@@ -297,20 +297,22 @@ export function Checkout({ cart, onBack, onSuccess, customer }) {
   const ongkir = meth==="delivery"?(ONGKIR[form.city]||ONGKIR.Lainnya):0;
   const total  = sub+ongkir;
 
-  // Data bank & e-wallet
+  // Data bank & e-wallet — baca dari settings (realtime dari Supabase)
+  const s = settings || {};
   const BANKS = [
-    {id:"bca",    logo:"🏦", name:"BCA",     norek:"1234567890",   an:"Budi Santoso - KIOS REFRES"},
-    {id:"mandiri",logo:"🏦", name:"Mandiri", norek:"1110009988771",an:"Budi Santoso - KIOS REFRES"},
-    {id:"bni",    logo:"🏦", name:"BNI",     norek:"0987654321",   an:"Budi Santoso - KIOS REFRES"},
-    {id:"bri",    logo:"🏦", name:"BRI",     norek:"0081234567890",an:"Budi Santoso - KIOS REFRES"},
-    {id:"bsi",    logo:"🏦", name:"BSI",     norek:"7112345678",   an:"Budi Santoso - KIOS REFRES"},
+    {id:"bca",     logo:"🏦", name:"BCA",      norek: s.bank_bca     ||"1234567890",   an: s.bank_bca_name     ||"Pemilik Toko"},
+    {id:"mandiri", logo:"🏦", name:"Mandiri",  norek: s.bank_mandiri ||"1110009988771",an: s.bank_mandiri_name ||"Pemilik Toko"},
+    {id:"bni",     logo:"🏦", name:"BNI",      norek: s.bank_bni     ||"0987654321",   an: s.bank_bni_name     ||"Pemilik Toko"},
+    {id:"bri",     logo:"🏦", name:"BRI",      norek: s.bank_bri     ||"0081234567890",an: s.bank_bri_name     ||"Pemilik Toko"},
+    {id:"bsi",     logo:"🏦", name:"BSI",      norek: s.bank_bsi     ||"7112345678",   an: s.bank_bsi_name     ||"Pemilik Toko"},
   ];
   const EWALLETS = [
-    {id:"gopay",     logo:"💚", name:"GoPay",      no:"0812-3456-7890", an:"KIOS REFRES"},
-    {id:"ovo",       logo:"💜", name:"OVO",         no:"0812-3456-7890", an:"KIOS REFRES"},
-    {id:"dana",      logo:"💙", name:"DANA",        no:"0812-3456-7890", an:"KIOS REFRES"},
-    {id:"shopeepay", logo:"🧡", name:"ShopeePay",   no:"0812-3456-7890", an:"KIOS REFRES"},
+    {id:"gopay",      logo:"💚", name:"GoPay",      no: s.ewallet_gopay     ||"0812-3456-7890", an:"KIOS REFRES"},
+    {id:"ovo",        logo:"💜", name:"OVO",         no: s.ewallet_ovo       ||"0812-3456-7890", an:"KIOS REFRES"},
+    {id:"dana",       logo:"💙", name:"DANA",        no: s.ewallet_dana      ||"0812-3456-7890", an:"KIOS REFRES"},
+    {id:"shopeepay",  logo:"🧡", name:"ShopeePay",   no: s.ewallet_shopeepay ||"0812-3456-7890", an:"KIOS REFRES"},
   ];
+  const qrisImage = s.qris_image || "";
 
   const selectedBank   = BANKS.find(b=>b.id===payDetail);
   const selectedWallet = EWALLETS.find(w=>w.id===payDetail);
@@ -495,17 +497,15 @@ export function Checkout({ cart, onBack, onSuccess, customer }) {
             {payGroup==="qris" && (
               <div style={{background:"linear-gradient(135deg,#0F172A,#1E293B)",borderRadius:16,padding:20,textAlign:"center"}} className="anim-scaleIn">
                 <p style={{color:"rgba(255,255,255,0.6)",fontSize:11,fontWeight:800,letterSpacing:2,marginBottom:14}}>SCAN QRIS UNTUK MEMBAYAR</p>
-                {/* Mock QRIS pattern */}
+                {/* QRIS Image dari Settings */}
                 <div style={{width:180,height:180,background:"#fff",borderRadius:14,margin:"0 auto 14px",padding:12,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 0 0 4px rgba(255,255,255,0.1)"}}>
-                  <div style={{width:"100%",height:"100%",display:"grid",gridTemplateColumns:"repeat(9,1fr)",gap:2}}>
-                    {Array.from({length:81},(_,i)=>{
-                      // Corner squares
-                      const r=Math.floor(i/9),c=i%9;
-                      const corner=(r<3&&c<3)||(r<3&&c>5)||(r>5&&c<3);
-                      const rand=((i*17+r*7+c*13)%3)===0;
-                      return <div key={i} style={{borderRadius:1,background:corner||rand?"#0F172A":"transparent"}}/>;
-                    })}
-                  </div>
+                  {qrisImage
+                    ? <img src={qrisImage} alt="QRIS" style={{width:"100%",height:"100%",objectFit:"contain",borderRadius:6}}/>
+                    : <div style={{textAlign:"center"}}>
+                        <p style={{fontSize:40}}>📱</p>
+                        <p style={{fontSize:10,color:"#94A3B8",marginTop:4}}>QRIS belum diupload</p>
+                      </div>
+                  }
                 </div>
                 <div style={{display:"inline-flex",alignItems:"center",gap:6,background:"rgba(255,255,255,0.1)",borderRadius:99,padding:"5px 14px",marginBottom:10}}>
                   <span style={{color:"#FCD34D",fontSize:18}}>⏱</span>
@@ -668,7 +668,7 @@ export function Checkout({ cart, onBack, onSuccess, customer }) {
 }
 
 /* ══════ SUCCESS PAGE ══════ */
-export function Success({ order, onHome }) {
+export function Success({ order, onHome, settings }) {
   const isTransfer = order.payment_method?.startsWith("Transfer");
   const isEwallet  = ["GoPay","OVO","DANA","ShopeePay"].includes(order.payment_method);
   const isQris     = order.payment_method==="QRIS";
@@ -757,8 +757,8 @@ export function Success({ order, onHome }) {
               <p style={{fontSize:12,color:"#475569",lineHeight:1.6}}>{s}</p>
             </div>
           ))}
-          <a href="https://wa.me/6281234567890" target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:"#22C55E",color:"#fff",borderRadius:11,padding:"10px 0",fontWeight:800,fontSize:13,marginTop:4}}>
-            <span style={{fontSize:18}}>💬</span> Hubungi Admin WhatsApp
+          <a href={`https://wa.me/${settings?.wa_number||"6281234567890"}?text=Halo%20saya%20baru%20pesan%20dengan%20No.%20${order.order_id}`} target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:"#22C55E",color:"#fff",borderRadius:11,padding:"10px 0",fontWeight:800,fontSize:13,marginTop:4}}>
+            <span style={{fontSize:18}}>💬</span> Hubungi {settings?.wa_name||"Admin"} via WhatsApp
           </a>
         </div>
       )}
