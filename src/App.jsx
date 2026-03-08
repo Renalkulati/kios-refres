@@ -8,6 +8,7 @@ import {
   fetchProducts, fetchOrders, fetchMyOrders, createOrder, decreaseStock,
   subscribeOrders, subscribeProducts
 } from "./lib/db.js";
+import { kirimStrukTelegram } from "./lib/telegram.js";
 
 const SESSION_KEY = "kios_refres_customer";
 
@@ -145,6 +146,8 @@ export default function App() {
       if (!dbError) {
         await createOrder(fullOrder);
         await decreaseStock(cart);
+        // Kirim struk ke Telegram
+        kirimStrukTelegram(fullOrder).catch(console.error);
         // Refresh myOrders setelah berhasil
         if (customer) {
           const mine = await fetchMyOrders(customer.id);
