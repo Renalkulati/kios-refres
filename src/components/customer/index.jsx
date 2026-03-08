@@ -769,7 +769,7 @@ export function Success({ order, onHome }) {
 }
 
 /* ══════ ORDERS PAGE ══════ */
-export function Orders({ orders, onBack, customer }) {
+export function Orders({ orders, onBack, customer, waNumber, waName }) {
   // orders sudah difilter per customer dari App.jsx (fetchMyOrders)
   return (
     <div style={{maxWidth:680,margin:"0 auto",padding:"20px 16px 90px"}}>
@@ -780,6 +780,14 @@ export function Orders({ orders, onBack, customer }) {
           <span style={{fontSize:14}}>👤</span>
           <p style={{fontSize:12,color:"#1D4ED8",fontWeight:700}}>Pesanan untuk: <strong>{customer.username}</strong></p>
         </div>
+      )}
+      {/* Tombol Chat WA */}
+      {waNumber && (
+        <a href={`https://wa.me/${waNumber}?text=Halo%20${encodeURIComponent(waName||"Admin")}%2C%20saya%20ingin%20bertanya%20tentang%20pesanan%20saya.`}
+          target="_blank" rel="noreferrer"
+          style={{display:"flex",alignItems:"center",justifyContent:"center",gap:9,background:"#22C55E",color:"#fff",borderRadius:12,padding:"12px 0",fontWeight:800,fontSize:14,marginBottom:16,textDecoration:"none",boxShadow:"0 4px 12px rgba(34,197,94,0.3)"}}>
+          <span style={{fontSize:20}}>💬</span> Chat WhatsApp {waName||"Admin"}
+        </a>
       )}
       {!orders.length
         ? <Empty icon="📦" title="Belum ada pesanan" desc="Pesanan Anda akan tampil di sini"/>
@@ -820,6 +828,18 @@ export function Orders({ orders, onBack, customer }) {
 }
 
 /* ══════ BOTTOM NAV ══════ */
+export function WAFloatButton({ waNumber, waName }) {
+  if (!waNumber) return null;
+  return (
+    <a href={`https://wa.me/${waNumber}?text=Halo%20${encodeURIComponent(waName||"Admin")}%2C%20saya%20mau%20tanya%20tentang%20produk.`}
+      target="_blank" rel="noreferrer"
+      title={"Chat " + (waName||"Admin")}
+      style={{position:"fixed",bottom:82,left:14,width:46,height:46,borderRadius:"50%",background:"#22C55E",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,boxShadow:"0 4px 16px rgba(34,197,94,0.4)",zIndex:80,textDecoration:"none",animation:"pop .3s ease"}}>
+      💬
+    </a>
+  );
+}
+
 export function BottomNav({ page, setPage, n }) {
   const items=[{p:"home",icon:"🏠",label:"Beranda"},{p:"orders",icon:"📦",label:"Pesanan"},{p:"cart",icon:"🛒",label:n>0?`Keranjang (${n})`:"Keranjang"}];
   return (

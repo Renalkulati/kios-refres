@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { useToast, ToastBox, Spinner } from "./components/ui/index.jsx";
-import { Splash, Navbar, Home, Detail, Cart, Checkout, Success, Orders, BottomNav } from "./components/customer/index.jsx";
+import { Splash, Navbar, Home, Detail, Cart, Checkout, Success, Orders, BottomNav, WAFloatButton } from "./components/customer/index.jsx";
 import { CustomerAuth } from "./components/customer/auth.jsx";
 import { LoginPage, AdminApp } from "./components/admin/index.jsx";
 import { PRODUCTS as FALLBACK } from "./data/index.js";
 import {
   fetchProducts, fetchOrders, fetchMyOrders, createOrder, decreaseStock,
-  subscribeOrders, subscribeProducts
+  subscribeOrders, subscribeProducts, fetchSettings, subscribeSettings
 } from "./lib/db.js";
 import { kirimStrukTelegram } from "./lib/telegram.js";
 
@@ -27,6 +27,7 @@ export default function App() {
   const [loading,  setLoading]  = useState(true);
   const [dbError,  setDbError]  = useState(false);
 
+  const [settings, setSettings] = useState({wa_number:"6281234567890", wa_name:"Admin KIOS REFRES", qris_image:""});
   const [page,    setPage]    = useState("home");
   const [product, setProduct] = useState(null);
   const [cart,    setCart]    = useState([]);
@@ -39,10 +40,10 @@ export default function App() {
   useEffect(() => {
     async function loadAll() {
       try {
-        const prods = await fetchProducts();
+        const [prods, allOrds, sett] = await Promise.all([fetchProducts(), fetchOrders(), fetchSettings()]);
         setProducts(prods.length ? prods : FALLBACK);
-        const allOrds = await fetchOrders();
         setOrders(allOrds);
+        if (sett && Object.keys(sett).length) setSettings(s=>({...s,...sett}));
         if (customer) {
           const mine = await fetchMyOrders(customer.id);
           setMyOrders(mine);
@@ -85,12 +86,18 @@ export default function App() {
         }
       }
     );
+    // Subscribe settings changes
+    const settCh = subscribeSettings((payload) => {
+      if (payload.new?.key) {
+        setSettings(s => ({...s, [payload.new.key]: payload.new.value}));
+      }
+    });
     const prodCh = subscribeProducts((payload) => {
       if (payload.eventType==="UPDATE") setProducts(p=>p.map(x=>x.id===payload.new.id?payload.new:x));
       if (payload.eventType==="INSERT") setProducts(p=>[...p,payload.new]);
       if (payload.eventType==="DELETE") setProducts(p=>p.filter(x=>x.id!==payload.old.id));
     });
-    return () => { orderCh.unsubscribe(); prodCh.unsubscribe(); };
+    return () => { orderCh.unsubscribe(); prodCh.unsubscribe(); settCh.unsubscribe(); };
   }, [dbError, customer]);
 
   /* ── Login customer ── */
@@ -212,12 +219,13 @@ export default function App() {
         {page==="home"     && <Home products={products} onDetail={p=>{setProduct(p);setPage("detail");}} onAdd={addCart} q={q}/>}
         {page==="detail"   && product && <Detail p={product} onBack={()=>setPage("home")} onAdd={addCart} onBuy={(p,qty)=>{setCart([{...p,qty}]);setPage("checkout");}}/>}
         {page==="cart"     && <Cart cart={cart} onQty={updQty} onRemove={id=>setCart(p=>p.filter(i=>i.id!==id))} onCheckout={()=>setPage("checkout")} onBack={()=>setPage("home")}/>}
-        {page==="checkout" && <Checkout cart={cart} onBack={()=>setPage("cart")} onSuccess={onSuccess} customer={customer}/>}
+        {page==="checkout" && <Checkout cart={cart} onBack={()=>setPage("cart")} onSuccess={onSuccess} customer={customer} settings={settings}/>}
         {page==="success"  && last && <Success order={last} onHome={()=>handleSetPage("home")}/>}
-        {page==="orders"   && <Orders orders={myOrders} onBack={()=>handleSetPage("home")} customer={customer}/>}
+        {page==="orders"   && <Orders orders={myOrders} onBack={()=>handleSetPage("home")} customer={customer} waNumber={settings.wa_number} waName={settings.wa_name}/>}
       </main>
 
       <BottomNav page={page} setPage={handleSetPage} n={cartN}/>
+      <WAFloatButton waNumber={settings.wa_number} waName={settings.wa_name}/>
     </div>
   );
 }

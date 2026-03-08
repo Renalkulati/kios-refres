@@ -478,33 +478,267 @@ function OrdersMgmt({ orders, setOrders, toast }) {
 
 /* ══════ SETTINGS ══════ */
 function Settings({ user, toast }) {
-  const [storeName, set1] = useState("KIOS REFRES");
-  const [addr,      set2] = useState("Jl. Raya Contoh No. 88, Jakarta Selatan");
-  const [hours,     set3] = useState("07.00 - 21.00 WIB");
-  return (
-    <div style={{padding:"20px 18px 40px",maxWidth:580}}>
-      <h2 style={{fontWeight:900,fontSize:19,marginBottom:4}}>Pengaturan Toko</h2>
-      <p style={{color:"#64748B",fontSize:13,marginBottom:22}}>Kelola informasi dan konfigurasi toko</p>
+  const BANKS = ["bca","mandiri","bni","bri","bsi"];
+  const EWALLETS = ["gopay","ovo","dana","shopeepay"];
 
-      <div className="card" style={{padding:20,marginBottom:14}}>
-        <h3 style={{fontWeight:800,fontSize:15,marginBottom:15}}>🏪 Informasi Toko</h3>
-        <Field label="Nama Toko"><input className="inp" value={storeName} onChange={e=>set1(e.target.value)}/></Field>
-        <Field label="Alamat Toko"><textarea className="inp" rows={2} value={addr} onChange={e=>set2(e.target.value)} style={{resize:"none"}}/></Field>
-        <Field label="Jam Operasional"><input className="inp" value={hours} onChange={e=>set3(e.target.value)}/></Field>
-        <button onClick={()=>toast.add("Pengaturan berhasil disimpan")} className="btn btn-primary">💾 Simpan</button>
+  const [loading, setLoading] = useState(true);
+  const [saving,  setSaving]  = useState(false);
+  const [tab,     setTab]     = useState("wa"); // wa | bank | qris | info
+
+  // State semua settings
+  const [waNumber,  setWaNumber]  = useState("");
+  const [waName,    setWaName]    = useState("");
+  const [qrisImg,   setQrisImg]   = useState("");
+  const [qrisPreview, setQrisPreview] = useState("");
+  const [banks,     setBanks]     = useState({});
+  const [ewallets,  setEwallets]  = useState({});
+  const [storeName, setStoreName] = useState("KIOS REFRES");
+  const [storeAddr, setStoreAddr] = useState("Jl. Raya Contoh No. 88, Jakarta Selatan");
+  const [storeHours,setStoreHours]= useState("07.00 - 21.00 WIB");
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const { fetchSettings } = await import("../../lib/db.js");
+        const s = await fetchSettings();
+        setWaNumber(s.wa_number||"");
+        setWaName(s.wa_name||"");
+        setQrisImg(s.qris_image||"");
+        setQrisPreview(s.qris_image||"");
+        setStoreName(s.store_name||"KIOS REFRES");
+        setStoreAddr(s.store_addr||"Jl. Raya Contoh No. 88, Jakarta Selatan");
+        setStoreHours(s.store_hours||"07.00 - 21.00 WIB");
+        const b={}, e={};
+        BANKS.forEach(bk => {
+          b[bk] = { number: s[`bank_${bk}`]||"", name: s[`bank_${bk}_name`]||"" };
+        });
+        EWALLETS.forEach(ew => {
+          e[ew] = s[`ewallet_${ew}`]||"";
+        });
+        setBanks(b); setEwallets(e);
+      } catch(err) { console.error(err); }
+      finally { setLoading(false); }
+    }
+    load();
+  }, []);
+
+  const handleQrisUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 500000) { toast.add("Ukuran gambar max 500KB", "err"); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setQrisImg(ev.target.result);
+      setQrisPreview(ev.target.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const saveWA = async () => {
+    setSaving(true);
+    try {
+      const { saveSettings } = await import("../../lib/db.js");
+      await saveSettings({ wa_number: waNumber, wa_name: waName });
+      toast.add("Nomor WA berhasil disimpan ✅");
+    } catch(e) { toast.add("Gagal simpan: "+e.message, "err"); }
+    setSaving(false);
+  };
+
+  const saveQris = async () => {
+    setSaving(true);
+    try {
+      const { saveSetting } = await import("../../lib/db.js");
+      await saveSetting("qris_image", qrisImg);
+      toast.add("QRIS berhasil disimpan ✅");
+    } catch(e) { toast.add("Gagal simpan: "+e.message, "err"); }
+    setSaving(false);
+  };
+
+  const saveBanks = async () => {
+    setSaving(true);
+    try {
+      const { saveSettings } = await import("../../lib/db.js");
+      const obj = {};
+      BANKS.forEach(bk => {
+        obj[`bank_${bk}`]      = banks[bk]?.number||"";
+        obj[`bank_${bk}_name`] = banks[bk]?.name||"";
+      });
+      EWALLETS.forEach(ew => {
+        obj[`ewallet_${ew}`] = ewallets[ew]||"";
+      });
+      await saveSettings(obj);
+      toast.add("Info pembayaran berhasil disimpan ✅");
+    } catch(e) { toast.add("Gagal simpan: "+e.message, "err"); }
+    setSaving(false);
+  };
+
+  const saveInfo = async () => {
+    setSaving(true);
+    try {
+      const { saveSettings } = await import("../../lib/db.js");
+      await saveSettings({ store_name: storeName, store_addr: storeAddr, store_hours: storeHours });
+      toast.add("Informasi toko berhasil disimpan ✅");
+    } catch(e) { toast.add("Gagal simpan: "+e.message, "err"); }
+    setSaving(false);
+  };
+
+  const tabs = [
+    {id:"wa",   icon:"💬", label:"WhatsApp"},
+    {id:"qris", icon:"📱", label:"QRIS"},
+    {id:"bank", icon:"🏦", label:"Bank & E-Wallet"},
+    {id:"info", icon:"🏪", label:"Info Toko"},
+  ];
+
+  if (loading) return (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:60,gap:12}}>
+      <Spinner size={28}/><p style={{fontWeight:700,color:"#64748B"}}>Memuat pengaturan...</p>
+    </div>
+  );
+
+  // Hanya owner yang bisa ubah settings
+  if (user.role !== "owner") return (
+    <div style={{padding:"40px 18px",textAlign:"center"}}>
+      <p style={{fontSize:32,marginBottom:12}}>🔒</p>
+      <p style={{fontWeight:800,fontSize:16,color:"#0F172A"}}>Akses Terbatas</p>
+      <p style={{color:"#64748B",fontSize:13,marginTop:6}}>Pengaturan hanya bisa diakses oleh Owner</p>
+    </div>
+  );
+
+  return (
+    <div style={{padding:"20px 18px 60px",maxWidth:640}}>
+      <h2 style={{fontWeight:900,fontSize:19,marginBottom:4}}>⚙️ Pengaturan Toko</h2>
+      <p style={{color:"#64748B",fontSize:13,marginBottom:20}}>Kelola semua konfigurasi KIOS REFRES</p>
+
+      {/* Tab Menu */}
+      <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
+        {tabs.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)}
+            style={{padding:"8px 16px",borderRadius:99,border:"none",cursor:"pointer",fontWeight:700,fontSize:13,
+              background: tab===t.id?"#2563EB":"#F1F5F9",
+              color: tab===t.id?"#fff":"#64748B",
+              boxShadow: tab===t.id?"0 2px 8px rgba(37,99,235,0.3)":"none",
+              transition:"all .2s"
+            }}>
+            {t.icon} {t.label}
+          </button>
+        ))}
       </div>
 
-      <div className="card" style={{padding:20}}>
-        <h3 style={{fontWeight:800,fontSize:15,marginBottom:15}}>👤 Profil Akun</h3>
-        <div style={{display:"flex",alignItems:"center",gap:13,marginBottom:14}}>
-          <div style={{width:50,height:50,borderRadius:13,background:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,fontWeight:900,color:"#fff"}}>{user.avatar}</div>
-          <div>
-            <p style={{fontWeight:800,fontSize:15}}>{user.name}</p>
-            <span className={`badge ${user.role==="owner"?"b-amber":"b-indigo"}`}>{user.role==="owner"?"👑 Owner":"🧑 Staff"}</span>
+      {/* ── TAB WhatsApp ── */}
+      {tab==="wa" && (
+        <div className="card" style={{padding:22}}>
+          <h3 style={{fontWeight:800,fontSize:15,marginBottom:5}}>💬 Nomor WhatsApp</h3>
+          <p style={{color:"#64748B",fontSize:13,marginBottom:18}}>Nomor ini akan muncul sebagai tombol "Chat WA" di halaman toko untuk pembeli</p>
+          <Field label="Nomor WA (format: 628xxx)">
+            <input className="inp" value={waNumber} onChange={e=>setWaNumber(e.target.value)} placeholder="628123456789"/>
+          </Field>
+          <Field label="Nama yang tampil">
+            <input className="inp" value={waName} onChange={e=>setWaName(e.target.value)} placeholder="Admin KIOS REFRES"/>
+          </Field>
+          <div style={{background:"#EFF6FF",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#1D4ED8"}}>
+            <strong>Preview tombol:</strong> 💬 Chat via WhatsApp<br/>
+            akan menghubungi <strong>{waName||"Admin"}</strong> di <strong>{waNumber||"belum diisi"}</strong>
+          </div>
+          <button onClick={saveWA} disabled={saving} className="btn btn-primary">
+            {saving?"Menyimpan...":"💾 Simpan Nomor WA"}
+          </button>
+        </div>
+      )}
+
+      {/* ── TAB QRIS ── */}
+      {tab==="qris" && (
+        <div className="card" style={{padding:22}}>
+          <h3 style={{fontWeight:800,fontSize:15,marginBottom:5}}>📱 QR Code QRIS</h3>
+          <p style={{color:"#64748B",fontSize:13,marginBottom:18}}>Upload foto QRIS Anda. Akan ditampilkan saat pembeli pilih metode QRIS</p>
+
+          {qrisPreview ? (
+            <div style={{textAlign:"center",marginBottom:16}}>
+              <img src={qrisPreview} alt="QRIS" style={{maxWidth:220,maxHeight:220,borderRadius:12,border:"2px solid #E2E8F4",objectFit:"contain"}}/>
+              <p style={{fontSize:12,color:"#10B981",fontWeight:700,marginTop:8}}>✅ QRIS sudah diupload</p>
+            </div>
+          ) : (
+            <div style={{background:"#F8FAFC",border:"2px dashed #CBD5E1",borderRadius:12,padding:"30px 20px",textAlign:"center",marginBottom:16}}>
+              <p style={{fontSize:28,marginBottom:8}}>📱</p>
+              <p style={{fontSize:13,color:"#94A3B8"}}>Belum ada gambar QRIS</p>
+            </div>
+          )}
+
+          <label style={{display:"block",background:"#EFF6FF",border:"1.5px solid #BFDBFE",borderRadius:10,padding:"11px 16px",textAlign:"center",cursor:"pointer",fontWeight:700,fontSize:13,color:"#2563EB",marginBottom:14}}>
+            📁 Pilih Foto QRIS
+            <input type="file" accept="image/*" onChange={handleQrisUpload} style={{display:"none"}}/>
+          </label>
+          <p style={{fontSize:11,color:"#94A3B8",marginBottom:16}}>Format: JPG/PNG. Maksimal 500KB</p>
+
+          <button onClick={saveQris} disabled={saving||!qrisImg} className="btn btn-primary">
+            {saving?"Menyimpan...":"💾 Simpan QRIS"}
+          </button>
+        </div>
+      )}
+
+      {/* ── TAB Bank & E-Wallet ── */}
+      {tab==="bank" && (
+        <div>
+          <div className="card" style={{padding:22,marginBottom:14}}>
+            <h3 style={{fontWeight:800,fontSize:15,marginBottom:16}}>🏦 Rekening Bank</h3>
+            {BANKS.map(bk=>(
+              <div key={bk} style={{marginBottom:16,paddingBottom:16,borderBottom:"1px solid #F1F5F9"}}>
+                <p style={{fontWeight:800,fontSize:13,color:"#0F172A",marginBottom:8,textTransform:"uppercase"}}>{bk}</p>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  <Field label="Nomor Rekening">
+                    <input className="inp" value={banks[bk]?.number||""} placeholder="Nomor rekening"
+                      onChange={e=>setBanks(p=>({...p,[bk]:{...p[bk],number:e.target.value}}))}/>
+                  </Field>
+                  <Field label="Nama Pemilik">
+                    <input className="inp" value={banks[bk]?.name||""} placeholder="Nama a/n"
+                      onChange={e=>setBanks(p=>({...p,[bk]:{...p[bk],name:e.target.value}}))}/>
+                  </Field>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="card" style={{padding:22,marginBottom:14}}>
+            <h3 style={{fontWeight:800,fontSize:15,marginBottom:16}}>📲 E-Wallet</h3>
+            {EWALLETS.map(ew=>(
+              <div key={ew} style={{marginBottom:12}}>
+                <Field label={ew.charAt(0).toUpperCase()+ew.slice(1)}>
+                  <input className="inp" value={ewallets[ew]||""} placeholder="Nomor e-wallet"
+                    onChange={e=>setEwallets(p=>({...p,[ew]:e.target.value}))}/>
+                </Field>
+              </div>
+            ))}
+          </div>
+
+          <button onClick={saveBanks} disabled={saving} className="btn btn-primary btn-block">
+            {saving?"Menyimpan...":"💾 Simpan Semua Info Pembayaran"}
+          </button>
+        </div>
+      )}
+
+      {/* ── TAB Info Toko ── */}
+      {tab==="info" && (
+        <div className="card" style={{padding:22}}>
+          <h3 style={{fontWeight:800,fontSize:15,marginBottom:16}}>🏪 Informasi Toko</h3>
+          <Field label="Nama Toko"><input className="inp" value={storeName} onChange={e=>setStoreName(e.target.value)}/></Field>
+          <Field label="Alamat Toko"><textarea className="inp" rows={2} value={storeAddr} onChange={e=>setStoreAddr(e.target.value)} style={{resize:"none"}}/></Field>
+          <Field label="Jam Operasional"><input className="inp" value={storeHours} onChange={e=>setStoreHours(e.target.value)}/></Field>
+          <button onClick={saveInfo} disabled={saving} className="btn btn-primary">
+            {saving?"Menyimpan...":"💾 Simpan Info Toko"}
+          </button>
+
+          <div style={{marginTop:24,paddingTop:20,borderTop:"1px solid #F1F5F9"}}>
+            <h3 style={{fontWeight:800,fontSize:15,marginBottom:15}}>👤 Profil Akun</h3>
+            <div style={{display:"flex",alignItems:"center",gap:13}}>
+              <div style={{width:46,height:46,borderRadius:13,background:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:900,color:"#fff"}}>{user.avatar}</div>
+              <div>
+                <p style={{fontWeight:800,fontSize:15}}>{user.name}</p>
+                <span className={`badge ${user.role==="owner"?"b-amber":"b-indigo"}`}>{user.role==="owner"?"👑 Owner":"🧑 Staff"}</span>
+                <p style={{fontSize:12,color:"#94A3B8",marginTop:3}}>@{user.username}</p>
+              </div>
+            </div>
           </div>
         </div>
-        <p style={{fontSize:13,color:"#64748B"}}>Username: <strong>{user.username}</strong></p>
-      </div>
+      )}
     </div>
   );
 }

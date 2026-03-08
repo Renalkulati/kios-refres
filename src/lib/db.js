@@ -138,3 +138,39 @@ export async function loginCustomer({ username, password }) {
   if (!data) throw new Error("Username atau password salah");
   return data;
 }
+
+/* ══════ STORE SETTINGS ══════ */
+
+export async function fetchSettings() {
+  const { data, error } = await supabase
+    .from("store_settings").select("key, value");
+  if (error) throw error;
+  // Ubah array [{key,value}] jadi object {key: value}
+  return Object.fromEntries((data||[]).map(r => [r.key, r.value]));
+}
+
+export async function saveSetting(key, value) {
+  const { error } = await supabase
+    .from("store_settings")
+    .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
+  if (error) throw error;
+}
+
+export async function saveSettings(obj) {
+  // Simpan banyak setting sekaligus
+  const rows = Object.entries(obj).map(([key, value]) => ({
+    key, value, updated_at: new Date().toISOString()
+  }));
+  const { error } = await supabase
+    .from("store_settings")
+    .upsert(rows, { onConflict: "key" });
+  if (error) throw error;
+}
+
+export function subscribeSettings(onChange) {
+  const ch = "settings-" + Math.random().toString(36).slice(2,8);
+  return supabase.channel(ch)
+    .on("postgres_changes", { event: "*", schema: "public", table: "store_settings" },
+      payload => onChange(payload)
+    ).subscribe();
+}
