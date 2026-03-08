@@ -282,10 +282,10 @@ export function Cart({ cart, onQty, onRemove, onCheckout, onBack }) {
 }
 
 /* ══════ CHECKOUT PAGE ══════ */
-export function Checkout({ cart, onBack, onSuccess }) {
+export function Checkout({ cart, onBack, onSuccess, customer }) {
   const [step,      setStep]     = useState(1);
   const [meth,      setMeth]     = useState("");
-  const [form,      setForm]     = useState({name:"",phone:"",address:"",city:""});
+  const [form,      setForm]     = useState({name: customer?.username||"", phone: customer?.phone||"", address:"", city:""});
   const [payGroup,  setPayGroup] = useState("");   // transfer | ewallet | qris | card
   const [payDetail, setPayDetail]= useState("");   // bank/wallet spesifik
   const [errs,      setErrs]     = useState({});

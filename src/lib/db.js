@@ -34,113 +34,107 @@ export async function decreaseStock(cartItems) {
 
 /* ══════ ORDERS ══════ */
 export async function fetchOrders() {
-  const { data, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
+  const { data, error } = await supabase
+    .from("orders").select("*").order("created_at", { ascending: false });
   if (error) throw error;
   return data || [];
 }
+
+export async function fetchMyOrders(customerId) {
+  const { data, error } = await supabase
+    .from("orders").select("*")
+    .eq("customer_id", customerId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
 export async function createOrder(order) {
-  const { data, error } = await supabase.from("orders").insert([{
+  const payload = {
     order_id:        order.order_id,
     customer_name:   order.customer_name,
     phone:           order.phone,
     products:        order.products,
     total_price:     order.total_price,
     delivery_method: order.delivery_method,
-    address:         order.address,
-    pickup_code:     order.pickup_code,
-    order_status:    order.order_status,
+    address:         order.address || null,
+    pickup_code:     order.pickup_code || null,
+    order_status:    order.order_status || "diproses",
     order_date:      order.order_date,
     payment_method:  order.payment_method,
-    pay_detail:      order.pay_detail,
-  }]).select().single();
-  if (error) throw error;
+    pay_detail:      order.pay_detail || null,
+    customer_id:     order.customer_id || null,
+  };
+  console.log("[createOrder] payload:", payload);
+  const { data, error } = await supabase.from("orders").insert([payload]).select().single();
+  if (error) { console.error("[createOrder] error:", error); throw error; }
+  console.log("[createOrder] success:", data);
   return data;
 }
+
 export async function updateOrderStatus(orderId, status) {
-  const { error } = await supabase.from("orders").update({ order_status: status }).eq("order_id", orderId);
-  if (error) throw error;
+  console.log("[updateOrderStatus]", orderId, "->", status);
+  const { data, error } = await supabase
+    .from("orders").update({ order_status: status })
+    .eq("order_id", orderId).select().single();
+  if (error) { console.error("[updateOrderStatus] error:", error); throw error; }
+  console.log("[updateOrderStatus] success:", data);
+  return data;
 }
 
-/* ══════ REALTIME ══════
-   Setiap pemanggil mendapat channel name UNIK
-   supaya tidak bertabrakan antara customer & admin
-══════════════════════ */
+/* ══════ REALTIME ══════ */
 export function subscribeOrders(onInsert, onUpdate) {
-  // Nama channel unik pakai timestamp supaya customer & admin tidak bentrok
-  const channelName = "orders-ch-" + Math.random().toString(36).slice(2, 8);
+  const channelName = "orders-" + Math.random().toString(36).slice(2, 9);
+  console.log("[subscribeOrders] channel:", channelName);
   return supabase
     .channel(channelName)
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "orders" },
-      payload => onInsert(payload.new)
+      payload => { console.log("[realtime INSERT]", payload.new); onInsert(payload.new); }
     )
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders" },
-      payload => onUpdate(payload.new)
+      payload => { console.log("[realtime UPDATE]", payload.new); onUpdate(payload.new); }
     )
-    .subscribe((status) => {
-      console.log("[Supabase Realtime Orders]", channelName, status);
+    .subscribe((status, err) => {
+      console.log("[subscribeOrders status]", channelName, status, err || "");
     });
 }
 
 export function subscribeProducts(onChange) {
-  const channelName = "products-ch-" + Math.random().toString(36).slice(2, 8);
+  const channelName = "products-" + Math.random().toString(36).slice(2, 9);
   return supabase
     .channel(channelName)
     .on("postgres_changes", { event: "*", schema: "public", table: "products" },
       payload => onChange(payload)
     )
-    .subscribe((status) => {
-      console.log("[Supabase Realtime Products]", channelName, status);
-    });
+    .subscribe();
 }
 
 /* ══════ CUSTOMER AUTH ══════ */
-
-// Daftar akun baru
 export async function registerCustomer({ username, phone, password }) {
-  // Cek username sudah ada
-  const { data: existing } = await supabase
-    .from("customers")
-    .select("id")
-    .eq("username", username)
-    .single();
-  if (existing) throw new Error("Username sudah dipakai, coba yang lain");
+  // Cek username
+  const { data: exUser } = await supabase.from("customers")
+    .select("id").eq("username", username.toLowerCase().trim()).maybeSingle();
+  if (exUser) throw new Error("Username sudah dipakai, coba yang lain");
 
-  // Cek phone sudah ada
-  const { data: existPhone } = await supabase
-    .from("customers")
-    .select("id")
-    .eq("phone", phone)
-    .single();
-  if (existPhone) throw new Error("Nomor HP sudah terdaftar");
+  // Cek phone
+  const { data: exPhone } = await supabase.from("customers")
+    .select("id").eq("phone", phone.trim()).maybeSingle();
+  if (exPhone) throw new Error("Nomor HP sudah terdaftar");
 
-  const { data, error } = await supabase
-    .from("customers")
-    .insert([{ username, phone, password }])
-    .select()
-    .single();
+  const { data, error } = await supabase.from("customers")
+    .insert([{ username: username.toLowerCase().trim(), phone: phone.trim(), password }])
+    .select().single();
   if (error) throw error;
   return data;
 }
 
-// Login customer
 export async function loginCustomer({ username, password }) {
-  const { data, error } = await supabase
-    .from("customers")
+  const { data, error } = await supabase.from("customers")
     .select("*")
-    .eq("username", username)
+    .eq("username", username.toLowerCase().trim())
     .eq("password", password)
-    .single();
-  if (error || !data) throw new Error("Username atau password salah");
-  return data;
-}
-
-// Ambil pesanan milik customer tertentu
-export async function fetchMyOrders(customerId) {
-  const { data, error } = await supabase
-    .from("orders")
-    .select("*")
-    .eq("customer_id", customerId)
-    .order("created_at", { ascending: false });
+    .maybeSingle();
   if (error) throw error;
-  return data || [];
+  if (!data) throw new Error("Username atau password salah");
+  return data;
 }

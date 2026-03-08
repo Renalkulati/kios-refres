@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { fetchOrders, updateOrderStatus, subscribeOrders } from "../../lib/db.js";
 import { fmt, now } from "../../utils/index.js";
 import { ACCOUNTS, CATEGORIES } from "../../data/index.js";
 import { useToast, ToastBox, StatCard, Modal, Confirm, Empty, Field, Spinner, StatusBadge } from "../ui/index.jsx";
@@ -356,10 +357,17 @@ function OrdersMgmt({ orders, setOrders, toast }) {
   );
 
   const updateStatus = async (id, s) => {
-    try { const { updateOrderStatus } = await import("../lib/db.js"); await updateOrderStatus(id, s); } catch(e) { console.error("Update status error:", e); }
+    // Update lokal dulu supaya UI langsung responsif
     setOrders(p=>p.map(o=>o.order_id===id?{...o,order_status:s}:o));
-    toast.add(`Status diperbarui ke "${s}"`);
     if(detail?.order_id===id) setDetail(p=>({...p,order_status:s}));
+    toast.add(`Status diperbarui ke "${s}"`);
+    // Update ke Supabase
+    try {
+      await updateOrderStatus(id, s);
+    } catch(e) {
+      console.error("Update status error:", e);
+      toast.add("Gagal update status: " + e.message, "err");
+    }
   };
 
   return (
@@ -515,7 +523,6 @@ export function AdminApp({ user, onLogout, products, setProducts, dbError }) {
     let cleanup = ()=>{};
     async function load() {
       try {
-        const { fetchOrders, subscribeOrders } = await import("../lib/db.js");
         const data = await fetchOrders();
         setOrders(data || []);
         setLoadingOrders(false);
