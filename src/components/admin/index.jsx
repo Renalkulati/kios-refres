@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { fetchOrders, updateOrderStatus, subscribeOrders } from "../../lib/db.js";
+import { fetchOrders, updateOrderStatus, subscribeOrders, fetchStaff, saveStaff, deleteStaff, subscribeStaff, fetchCategories, saveCategory, deleteCategory, subscribeCategories, loginStaff } from "../../lib/db.js";
+import { supabase } from "../../lib/supabase.js";
 import { fmt, now } from "../../utils/index.js";
-import { ACCOUNTS, CATEGORIES } from "../../data/index.js";
 import { useToast, ToastBox, StatCard, Modal, Confirm, Empty, Field, Spinner, StatusBadge } from "../ui/index.jsx";
 
 /* ══════ LOGIN PAGE ══════ */
@@ -12,14 +12,16 @@ export function LoginPage({ onLogin }) {
   const [busy, setBusy]   = useState(false);
   const [show, setShow]   = useState(false);
 
-  const handle = () => {
+  const handle = async () => {
     if(!user||!pass){setErr("Username dan password wajib diisi");return;}
     setBusy(true);
-    setTimeout(()=>{
-      const acc = ACCOUNTS.find(a=>a.username===user&&a.password===pass);
+    try {
+      const acc = await loginStaff(user.trim(), pass);
       if(acc) onLogin(acc);
       else { setErr("Username atau password salah"); setBusy(false); }
-    }, 900);
+    } catch(e) {
+      setErr("Gagal koneksi. Coba lagi."); setBusy(false);
+    }
   };
 
   return (
@@ -88,6 +90,7 @@ function Sidebar({ active, setActive, user, onLogout, open, onClose }) {
   const menus = [
     {id:"dashboard",icon:"📊",label:"Dashboard"},
     {id:"products", icon:"📦",label:"Produk"},
+    {id:"staff",    icon:"👥",label:"Staff & Akun"},
     {id:"orders",   icon:"🧾",label:"Pesanan"},
     {id:"settings", icon:"⚙️",label:"Pengaturan"},
   ];
@@ -223,7 +226,7 @@ function Dashboard({ products, orders }) {
 }
 
 /* ══════ PRODUCTS MANAGEMENT ══════ */
-function ProductsMgmt({ products, setProducts, toast }) {
+function ProductsMgmt({ products, setProducts, toast, categories=["Minuman","Snack","Makanan Instan","Kebutuhan Harian"], setCategories }) {
   const [search,  setSearch]  = useState("");
   const [catF,    setCatF]    = useState("Semua");
   const [modal,   setModal]   = useState(false);
@@ -377,11 +380,29 @@ function ProductsMgmt({ products, setProducts, toast }) {
         </div>
         <Field label="Kategori">
           <select className="inp" value={form.cat} onChange={e=>sf("cat",e.target.value)}>
-            {["Minuman","Snack","Makanan Instan","Kebutuhan Harian"].map(c=><option key={c}>{c}</option>)}
+            {categories.map(c=><option key={c}>{c}</option>)}
           </select>
         </Field>
-        <Field label="URL Gambar">
-          <input className="inp" value={form.img} onChange={e=>sf("img",e.target.value)} placeholder="https://..."/>
+        <Field label="Foto Produk">
+          <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+            <div style={{flex:1}}>
+              <input className="inp" value={form.img} onChange={e=>sf("img",e.target.value)} placeholder="URL gambar atau upload di bawah"/>
+            </div>
+          </div>
+          <label style={{display:"flex",alignItems:"center",gap:8,background:"#EFF6FF",border:"1.5px solid #BFDBFE",borderRadius:9,padding:"9px 13px",cursor:"pointer",fontWeight:700,fontSize:13,color:"#2563EB",marginTop:8}}>
+            📷 Pilih dari Galeri / Kamera
+            <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>{
+              const file=e.target.files[0]; if(!file) return;
+              if(file.size>800000){toast.add("Ukuran max 800KB","err");return;}
+              const r=new FileReader(); r.onload=ev=>sf("img",ev.target.result); r.readAsDataURL(file);
+            }}/>
+          </label>
+          {form.img&&form.img.startsWith("data:")&&(
+            <div style={{marginTop:8,textAlign:"center"}}>
+              <img src={form.img} alt="preview" style={{maxHeight:100,maxWidth:"100%",borderRadius:8,objectFit:"contain"}}/>
+              <p style={{fontSize:11,color:"#10B981",fontWeight:700,marginTop:4}}>✅ Foto siap diupload</p>
+            </div>
+          )}
         </Field>
         <Field label="Deskripsi">
           <textarea className="inp" rows={3} value={form.desc} onChange={e=>sf("desc",e.target.value)} placeholder="Deskripsi produk..." style={{resize:"none"}}/>
@@ -389,6 +410,9 @@ function ProductsMgmt({ products, setProducts, toast }) {
       </Modal>
 
       <Confirm open={!!delId} onClose={()=>setDelId(null)} onOk={del} danger title="Hapus Produk" msg="Yakin ingin menghapus produk ini? Tindakan ini tidak dapat dibatalkan."/>
+
+      {/* Kelola Kategori */}
+      <CatMgmt categories={categories} setCategories={setCategories} toast={toast}/>
 
       {/* Modal Tambah Stok Cepat */}
       <Modal open={!!stockModal} onClose={()=>{setStockModal(null);setStockAdd("");}} title="📦 Tambah Stok"
@@ -819,68 +843,299 @@ function Settings({ user, toast }) {
   );
 }
 
+/* ══════ CATEGORY MANAGEMENT (embedded in ProductsMgmt) ══════ */
+function CatMgmt({ categories, setCategories, toast }) {
+  const [newCat,  setNewCat]  = useState("");
+  const [newIcon, setNewIcon] = useState("📦");
+  const [saving,  setSaving]  = useState(false);
+  const [open,    setOpen]    = useState(false);
+  const ICONS = ["📦","🥤","🍿","🍜","🧴","🍎","🧃","🍕","🧹","💊","🛁","🧺","🥛","🍞","🍫","🧊"];
+
+  const add = async ()=>{
+    if(!newCat.trim()){ toast.add("Nama kategori wajib diisi","err"); return; }
+    if(categories.includes(newCat.trim())){ toast.add("Kategori sudah ada","err"); return; }
+    setSaving(true);
+    try{
+      await saveCategory(newCat.trim(), newIcon);
+      setCategories(p=>[...p, newCat.trim()]);
+      toast.add(`Kategori "${newCat.trim()}" ditambahkan ✅`);
+      setNewCat(""); setNewIcon("📦");
+    }catch(e){ toast.add("Gagal: "+e.message,"err"); }
+    setSaving(false);
+  };
+
+  const del = async (name)=>{
+    try{
+      await deleteCategory(name);
+      setCategories(p=>p.filter(c=>c!==name));
+      toast.add(`Kategori "${name}" dihapus`,"err");
+    }catch(e){ toast.add("Gagal hapus: "+e.message,"err"); }
+  };
+
+  const DEFAULT_CATS = ["Minuman","Snack","Makanan Instan","Kebutuhan Harian"];
+
+  return(
+    <div className="card" style={{padding:18,marginTop:14}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:open?14:0}}>
+        <div>
+          <h3 style={{fontWeight:800,fontSize:14}}>🏷️ Kelola Kategori</h3>
+          <p style={{fontSize:12,color:"#94A3B8"}}>{categories.length} kategori tersedia</p>
+        </div>
+        <button onClick={()=>setOpen(p=>!p)} className="btn btn-secondary btn-sm">{open?"Tutup":"Kelola"}</button>
+      </div>
+      {open&&(
+        <div>
+          {/* Daftar kategori */}
+          <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:14}}>
+            {categories.map(c=>(
+              <div key={c} style={{display:"flex",alignItems:"center",gap:5,background:"#EFF6FF",borderRadius:99,padding:"5px 12px",fontSize:13,fontWeight:700,color:"#1D4ED8"}}>
+                {c}
+                {!DEFAULT_CATS.includes(c)&&(
+                  <button onClick={()=>del(c)} style={{background:"none",border:"none",cursor:"pointer",color:"#EF4444",fontSize:14,lineHeight:1,padding:0,marginLeft:3}}>×</button>
+                )}
+              </div>
+            ))}
+          </div>
+          {/* Tambah kategori baru */}
+          <p style={{fontSize:12,fontWeight:800,color:"#64748B",marginBottom:8}}>TAMBAH KATEGORI BARU</p>
+          <div style={{display:"flex",gap:8,alignItems:"flex-start",flexWrap:"wrap"}}>
+            <input className="inp" value={newCat} onChange={e=>setNewCat(e.target.value)}
+              placeholder="Nama kategori baru" style={{flex:1,minWidth:160}}
+              onKeyDown={e=>e.key==="Enter"&&add()}/>
+            <button onClick={add} disabled={saving||!newCat.trim()} className="btn btn-primary btn-sm">
+              {saving?"...":"+ Tambah"}
+            </button>
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:10}}>
+            {ICONS.map(ic=>(
+              <button key={ic} onClick={()=>setNewIcon(ic)}
+                style={{width:34,height:34,borderRadius:8,border:`2px solid ${newIcon===ic?"#2563EB":"transparent"}`,background:newIcon===ic?"#EFF6FF":"#F8FAFC",cursor:"pointer",fontSize:16}}>
+                {ic}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════ STAFF MANAGEMENT ══════ */
+function StaffMgmt({ currentUser, toast }) {
+  const [staffList, setStaffList] = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [modal,     setModal]     = useState(false);
+  const [editS,     setEditS]     = useState(null);
+  const [delId,     setDelId]     = useState(null);
+  const [form,      setForm]      = useState({name:"",username:"",password:"",role:"staff",phone:""});
+  const [saving,    setSaving]    = useState(false);
+  const [myProfile, setMyProfile] = useState(false);
+  const [profForm,  setProfForm]  = useState({name:"",phone:"",password:""});
+
+  useEffect(()=>{
+    async function load(){
+      try{
+        const list = await fetchStaff();
+        setStaffList(list);
+      }catch(e){ toast.add("Gagal load staff","err"); }
+      finally{ setLoading(false); }
+    }
+    load();
+    const ch = subscribeStaff(()=>fetchStaff().then(setStaffList).catch(console.error));
+    return ()=>ch.unsubscribe();
+  },[]);
+
+  const openAdd  = ()=>{ setEditS(null); setForm({name:"",username:"",password:"",role:"staff",phone:""}); setModal(true); };
+  const openEdit = s =>{ setEditS(s); setForm({name:s.name,username:s.username,password:s.password,role:s.role,phone:s.phone||""}); setModal(true); };
+
+  const save = async ()=>{
+    if(!form.name||!form.username||!form.password){ toast.add("Nama, username, dan password wajib diisi","err"); return; }
+    setSaving(true);
+    try{
+      await saveStaff(editS?{...form,id:editS.id}:{...form,is_active:true});
+      toast.add(editS?"Akun berhasil diperbarui ✅":"Akun berhasil ditambahkan ✅");
+      setModal(false);
+    }catch(e){ toast.add("Gagal: "+e.message,"err"); }
+    setSaving(false);
+  };
+
+  const del = async ()=>{
+    try{
+      await deleteStaff(delId);
+      toast.add("Akun dihapus","err");
+    }catch(e){ toast.add("Gagal hapus","err"); }
+    setDelId(null);
+  };
+
+  const toggleActive = async (s)=>{
+    try{
+      await saveStaff({...s, is_active:!s.is_active});
+      toast.add(s.is_active?"Akun dinonaktifkan":"Akun diaktifkan kembali");
+    }catch(e){ toast.add("Gagal","err"); }
+  };
+
+  const saveProfile = async ()=>{
+    if(!profForm.name){ toast.add("Nama wajib diisi","err"); return; }
+    setSaving(true);
+    try{
+      const upd = {id:currentUser.id, name:profForm.name, phone:profForm.phone,
+        password: profForm.password||currentUser.password,
+        username:currentUser.username, role:currentUser.role};
+      await saveStaff(upd);
+      toast.add("Profil berhasil diperbarui ✅");
+      setMyProfile(false);
+    }catch(e){ toast.add("Gagal: "+e.message,"err"); }
+    setSaving(false);
+  };
+
+  const active = staffList.filter(s=>s.is_active);
+
+  return(
+    <div style={{padding:"20px 18px 60px",maxWidth:700}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
+        <div>
+          <h2 style={{fontWeight:900,fontSize:19}}>👥 Manajemen Staff</h2>
+          <p style={{color:"#64748B",fontSize:13}}>{active.length} akun aktif dari {staffList.length} total</p>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>{setProfForm({name:currentUser.name,phone:currentUser.phone||"",password:""});setMyProfile(true);}} className="btn btn-secondary">✏️ Edit Profilku</button>
+          {currentUser.role==="owner" && <button onClick={openAdd} className="btn btn-primary">+ Tambah Akun</button>}
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:20}}>
+        {[
+          {icon:"👑",label:"Owner",val:staffList.filter(s=>s.role==="owner").length,color:"#F59E0B",bg:"#FEF3C7"},
+          {icon:"🧑",label:"Staff Aktif",val:active.filter(s=>s.role==="staff").length,color:"#2563EB",bg:"#EFF6FF"},
+          {icon:"⛔",label:"Nonaktif",val:staffList.filter(s=>!s.is_active).length,color:"#EF4444",bg:"#FEF2F2"},
+        ].map(s=>(
+          <div key={s.label} style={{background:s.bg,borderRadius:12,padding:"14px",textAlign:"center"}}>
+            <p style={{fontSize:22}}>{s.icon}</p>
+            <p style={{fontWeight:900,fontSize:20,color:s.color}}>{s.val}</p>
+            <p style={{fontSize:11,color:"#64748B",fontWeight:700}}>{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {loading ? <div style={{textAlign:"center",padding:40}}><Spinner size={28}/></div> : (
+        <div className="card" style={{overflow:"hidden"}}>
+          {staffList.map((s,i)=>(
+            <div key={s.id} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",borderBottom:i<staffList.length-1?"1px solid #F1F5F9":"none",opacity:s.is_active?1:0.5}}>
+              <div style={{width:42,height:42,borderRadius:12,background:s.role==="owner"?"#F59E0B":"#2563EB",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:900,color:"#fff",flexShrink:0}}>
+                {(s.name||"?").split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase()}
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:7}}>
+                  <p style={{fontWeight:800,fontSize:14}}>{s.name}</p>
+                  <span className={`badge ${s.role==="owner"?"b-amber":"b-indigo"}`}>{s.role==="owner"?"👑 Owner":"🧑 Staff"}</span>
+                  {!s.is_active && <span className="badge b-red">Nonaktif</span>}
+                </div>
+                <p style={{fontSize:12,color:"#94A3B8"}}>@{s.username} {s.phone?`· ${s.phone}`:""}</p>
+              </div>
+              {currentUser.role==="owner" && s.id!==currentUser.id && (
+                <div style={{display:"flex",gap:6,flexShrink:0}}>
+                  <button onClick={()=>toggleActive(s)} className="btn btn-sm" style={{background:s.is_active?"#FEF2F2":"#ECFDF5",color:s.is_active?"#EF4444":"#059669",border:"none",cursor:"pointer",fontWeight:800}}>
+                    {s.is_active?"Nonaktifkan":"Aktifkan"}
+                  </button>
+                  <button onClick={()=>openEdit(s)} className="btn btn-secondary btn-sm">Edit</button>
+                  <button onClick={()=>setDelId(s.id)} className="btn btn-danger btn-sm">Hapus</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modal Tambah/Edit Akun */}
+      <Modal open={modal} onClose={()=>setModal(false)} title={editS?"Edit Akun Staff":"Tambah Akun Baru"}
+        footer={<><button className="btn btn-ghost btn-sm" onClick={()=>setModal(false)}>Batal</button><button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>{saving?"Menyimpan...":"💾 Simpan"}</button></>}>
+        <Field label="Nama Lengkap"><input className="inp" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} placeholder="Nama lengkap"/></Field>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
+          <Field label="Username"><input className="inp" value={form.username} onChange={e=>setForm(p=>({...p,username:e.target.value}))} placeholder="username"/></Field>
+          <Field label="Password"><input className="inp" value={form.password} onChange={e=>setForm(p=>({...p,password:e.target.value}))} placeholder="password"/></Field>
+        </div>
+        <Field label="No. HP (opsional)"><input className="inp" value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))} placeholder="08xxx"/></Field>
+        {currentUser.role==="owner" && (
+          <Field label="Role">
+            <select className="inp" value={form.role} onChange={e=>setForm(p=>({...p,role:e.target.value}))}>
+              <option value="staff">🧑 Staff</option>
+              <option value="owner">👑 Owner</option>
+            </select>
+          </Field>
+        )}
+      </Modal>
+
+      {/* Modal Edit Profil Sendiri */}
+      <Modal open={myProfile} onClose={()=>setMyProfile(false)} title="✏️ Edit Profil Saya"
+        footer={<><button className="btn btn-ghost btn-sm" onClick={()=>setMyProfile(false)}>Batal</button><button className="btn btn-primary btn-sm" onClick={saveProfile} disabled={saving}>{saving?"Menyimpan...":"💾 Simpan"}</button></>}>
+        <Field label="Nama Lengkap"><input className="inp" value={profForm.name} onChange={e=>setProfForm(p=>({...p,name:e.target.value}))}/></Field>
+        <Field label="No. HP"><input className="inp" value={profForm.phone} onChange={e=>setProfForm(p=>({...p,phone:e.target.value}))} placeholder="08xxx"/></Field>
+        <Field label="Password Baru (kosongkan jika tidak ingin ganti)"><input className="inp" type="password" value={profForm.password} onChange={e=>setProfForm(p=>({...p,password:e.target.value}))} placeholder="Password baru..."/></Field>
+      </Modal>
+
+      <Confirm open={!!delId} onClose={()=>setDelId(null)} onOk={del} danger title="Hapus Akun" msg="Yakin ingin menghapus akun ini? Akun tidak bisa dipulihkan."/>
+    </div>
+  );
+}
+
 /* ══════ ADMIN APP (entry) ══════ */
 export function AdminApp({ user, onLogout, products, setProducts, dbError }) {
-  const [menu,   setMenu]   = useState("dashboard");
-  const [sOpen,  setSOpen]  = useState(false);
-  const [orders, setOrders] = useState([]);
+  const [menu,       setMenu]       = useState("dashboard");
+  const [sOpen,      setSOpen]      = useState(false);
+  const [orders,     setOrders]     = useState([]);
+  const [categories, setCategories] = useState(["Minuman","Snack","Makanan Instan","Kebutuhan Harian"]);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const toast = useToast();
 
-  const titles = {dashboard:"📊 Dashboard",products:"📦 Manajemen Produk",orders:"🧾 Manajemen Pesanan",settings:"⚙️ Pengaturan"};
+  const titles = {dashboard:"📊 Dashboard",products:"📦 Manajemen Produk",orders:"🧾 Manajemen Pesanan",staff:"👥 Staff & Akun",settings:"⚙️ Pengaturan"};
 
-  useEffect(() => {
-    let cleanup = ()=>{};
-    async function load() {
-      try {
-        const data = await fetchOrders();
-        setOrders(data || []);
+  useEffect(()=>{
+    let cleanup=()=>{};
+    async function load(){
+      try{
+        const [data, cats] = await Promise.all([fetchOrders(), fetchCategories()]);
+        setOrders(data||[]);
+        if(cats.length) setCategories(cats);
         setLoadingOrders(false);
         const ch = subscribeOrders(
-          (n) => {
-            setOrders(prev => {
-              if (prev.find(o => o.order_id === n.order_id)) return prev;
-              toast.add("🔔 Pesanan baru dari " + n.customer_name + "!", "info");
-              return [n, ...prev];
-            });
-          },
-          (u) => setOrders(prev => prev.map(o => o.order_id===u.order_id ? u : o))
+          (n)=>{ setOrders(prev=>{ if(prev.find(o=>o.order_id===n.order_id)) return prev; toast.add("🔔 Pesanan baru dari "+n.customer_name+"!","info"); return [n,...prev]; }); },
+          (u)=>setOrders(prev=>prev.map(o=>o.order_id===u.order_id?u:o))
         );
-        cleanup = () => ch.unsubscribe();
-      } catch(e) {
-        console.error("Admin load error:", e);
+        const catCh = subscribeCategories(()=>fetchCategories().then(c=>{if(c.length)setCategories(c);}).catch(console.error));
+        cleanup=()=>{ ch.unsubscribe(); catCh.unsubscribe(); };
+      }catch(e){
+        console.error("Admin load error:",e);
         setLoadingOrders(false);
-        toast.add("Gagal memuat pesanan", "err");
+        toast.add("Gagal memuat data","err");
       }
     }
     load();
-    return () => cleanup();
-  }, []);
+    return ()=>cleanup();
+  },[]);
 
-  return (
+  return(
     <div className="admin-layout">
       <ToastBox list={toast.list} remove={toast.remove}/>
       <Sidebar active={menu} setActive={setMenu} user={user} onLogout={onLogout} open={sOpen} onClose={()=>setSOpen(false)}/>
       <div className="admin-main">
         <Topbar title={titles[menu]||"Dashboard"} onMenu={()=>setSOpen(p=>!p)} user={user}/>
         <div style={{background:"#F0F4FF",minHeight:"calc(100vh - 56px)"}}>
-          {!dbError && (
+          {!dbError&&(
             <div style={{background:"#D1FAE5",borderBottom:"1px solid #6EE7B7",padding:"6px 18px",fontSize:12,fontWeight:700,color:"#065F46",display:"flex",alignItems:"center",gap:6}}>
               <span style={{width:7,height:7,borderRadius:"50%",background:"#10B981",display:"inline-block"}}/>
-              Terhubung — Pesanan baru muncul otomatis real-time
+              Terhubung — Semua data real-time dari Supabase
             </div>
           )}
           {loadingOrders
-            ? <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:60,gap:14,flexDirection:"column"}}>
-                <Spinner size={36}/>
-                <p style={{fontWeight:700,color:"#64748B"}}>Memuat pesanan dari database...</p>
-              </div>
-            : <>
-                {menu==="dashboard" && <Dashboard products={products} orders={orders}/>}
-                {menu==="products"  && <ProductsMgmt products={products} setProducts={setProducts} toast={toast}/>}
-                {menu==="orders"    && <OrdersMgmt orders={orders} setOrders={setOrders} toast={toast}/>}
-                {menu==="settings"  && <Settings user={user} toast={toast}/>}
-              </>
+            ?<div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:60,gap:14,flexDirection:"column"}}><Spinner size={36}/><p style={{fontWeight:700,color:"#64748B"}}>Memuat data...</p></div>
+            :<>
+              {menu==="dashboard" && <Dashboard products={products} orders={orders}/>}
+              {menu==="products"  && <ProductsMgmt products={products} setProducts={setProducts} toast={toast} categories={categories} setCategories={setCategories}/>}
+              {menu==="orders"    && <OrdersMgmt orders={orders} setOrders={setOrders} toast={toast}/>}
+              {menu==="staff"     && <StaffMgmt currentUser={user} toast={toast}/>}
+              {menu==="settings"  && <Settings user={user} toast={toast}/>}
+            </>
           }
         </div>
       </div>

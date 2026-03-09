@@ -33,13 +33,17 @@ export function Splash({ onDone }) {
 
 /* ══════ NAVBAR ══════ */
 export function Navbar({ cartCount, page, setPage, q, setQ, customer, onLogout }) {
-  const [scrolled, setScrolled] = useState(false);
+  const [scrolled,     setScrolled]     = useState(false);
+  const [profileOpen,  setProfileOpen]  = useState(false);
+
   useEffect(() => {
     const h = () => setScrolled(window.scrollY > 6);
     window.addEventListener("scroll", h);
     return () => window.removeEventListener("scroll", h);
   }, []);
+
   return (
+    <>
     <nav className={`navbar ${scrolled?"scrolled":""}`}>
       <div style={{maxWidth:1100,margin:"0 auto",padding:"0 16px",display:"flex",alignItems:"center",gap:10,height:58}}>
         <button onClick={() => { setPage("home"); setQ(""); }} style={{background:"none",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:9,flexShrink:0}}>
@@ -59,14 +63,55 @@ export function Navbar({ cartCount, page, setPage, q, setQ, customer, onLogout }
         </button>
         {customer && (
           <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-            <div style={{width:30,height:30,borderRadius:"50%",background:"rgba(255,255,255,0.25)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:13,color:"#fff",border:"1.5px solid rgba(255,255,255,0.4)"}}>
+            <button onClick={()=>setProfileOpen(true)}
+              style={{width:32,height:32,borderRadius:"50%",background:"rgba(255,255,255,0.25)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:14,color:"#fff",border:"2px solid rgba(255,255,255,0.5)",cursor:"pointer",transition:"all .2s"}}
+              title="Lihat Profil">
               {customer.username[0].toUpperCase()}
-            </div>
-            <button onClick={onLogout} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,padding:"4px 9px",cursor:"pointer",color:"rgba(255,255,255,0.85)",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>Keluar</button>
+            </button>
           </div>
         )}
       </div>
     </nav>
+
+    {/* Profile Drawer */}
+    {profileOpen && customer && (
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setProfileOpen(false)}>
+        <div style={{background:"#fff",borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:420}} onClick={e=>e.stopPropagation()}>
+          <div style={{width:40,height:4,background:"#E2E8F0",borderRadius:99,margin:"0 auto 20px"}}/>
+
+          {/* Avatar */}
+          <div style={{textAlign:"center",marginBottom:20}}>
+            <div style={{width:64,height:64,borderRadius:"50%",background:"linear-gradient(135deg,#2563EB,#7C3AED)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,fontWeight:900,color:"#fff",margin:"0 auto 12px"}}>
+              {customer.username[0].toUpperCase()}
+            </div>
+            <p style={{fontWeight:900,fontSize:17}}>{customer.username}</p>
+            <p style={{fontSize:12,color:"#94A3B8",marginTop:2}}>📱 {customer.phone||"Belum ada nomor"}</p>
+          </div>
+
+          {/* Menu */}
+          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+            {[
+              {icon:"📦",label:"Riwayat Pesanan",action:()=>{setPage("orders");setProfileOpen(false);}},
+              {icon:"🛒",label:"Keranjang Belanja",action:()=>{setPage("cart");setProfileOpen(false);}},
+            ].map(m=>(
+              <button key={m.label} onClick={m.action}
+                style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",background:"#F8FAFC",border:"none",borderRadius:12,cursor:"pointer",fontWeight:700,fontSize:14,textAlign:"left",width:"100%",transition:"background .15s"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#EFF6FF"}
+                onMouseLeave={e=>e.currentTarget.style.background="#F8FAFC"}>
+                <span style={{fontSize:20}}>{m.icon}</span> {m.label}
+                <span style={{marginLeft:"auto",color:"#94A3B8"}}>›</span>
+              </button>
+            ))}
+          </div>
+
+          <button onClick={()=>{onLogout();setProfileOpen(false);}}
+            style={{width:"100%",padding:"13px",background:"#FEF2F2",color:"#EF4444",border:"none",borderRadius:12,fontWeight:800,fontSize:14,cursor:"pointer"}}>
+            🚪 Keluar dari Akun
+          </button>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
@@ -793,36 +838,105 @@ export function Orders({ orders, onBack, customer, waNumber, waName }) {
         ? <Empty icon="📦" title="Belum ada pesanan" desc="Pesanan Anda akan tampil di sini"/>
         : <div style={{display:"flex",flexDirection:"column",gap:11}}>
             {[...orders].map(o=>(
-              <div key={o.order_id} className="card anim-fadeUp" style={{padding:17}}>
+              <div key={o.order_id} onClick={()=>setDetail(o)}
+                className="card anim-fadeUp"
+                style={{padding:17,cursor:"pointer",transition:"box-shadow .15s"}}
+                onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 20px rgba(37,99,235,0.12)"}
+                onMouseLeave={e=>e.currentTarget.style.boxShadow=""}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:11}}>
                   <div>
                     <p style={{fontWeight:900,fontSize:13,color:"#2563EB",marginBottom:2}}>{o.order_id}</p>
                     <p style={{fontSize:11,color:"#94A3B8"}}>{o.order_date}</p>
                   </div>
-                  <StatusBadge status={o.order_status}/>
+                  <div style={{display:"flex",alignItems:"center",gap:7}}>
+                    <StatusBadge status={o.order_status}/>
+                    <span style={{fontSize:12,color:"#94A3B8"}}>›</span>
+                  </div>
                 </div>
                 <div style={{marginBottom:11,paddingBottom:11,borderBottom:"1px solid #F1F5F9"}}>
-                  {o.products.map(p=>(
+                  {o.products.slice(0,2).map(p=>(
                     <div key={p.id} style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
                       <span style={{fontSize:13,color:"#64748B"}}>{p.name} ×{p.qty}</span>
                       <span style={{fontSize:13,fontWeight:700}}>{fmt(p.price*p.qty)}</span>
                     </div>
                   ))}
+                  {o.products.length>2 && <p style={{fontSize:12,color:"#94A3B8"}}>+{o.products.length-2} produk lainnya...</p>}
                 </div>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div>
-                    <p style={{fontSize:12,color:"#64748B",marginBottom:2}}>{o.delivery_method==="pickup"?"🏪 Ambil di Toko":"🚚 Delivery"}</p>
-                    {o.pickup_code && <p style={{fontSize:13,fontWeight:900,color:"#2563EB",fontFamily:"monospace",letterSpacing:1}}>{o.pickup_code}</p>}
-                  </div>
-                  <div style={{textAlign:"right"}}>
-                    <p style={{fontSize:11,color:"#94A3B8",marginBottom:2}}>Total</p>
-                    <p style={{fontWeight:900,fontSize:17,color:"#2563EB"}}>{fmt(o.total_price)}</p>
-                  </div>
+                  <p style={{fontSize:12,color:"#64748B"}}>{o.delivery_method==="pickup"?"🏪 Ambil di Toko":"🚚 Delivery"} · {o.payment_method}</p>
+                  <p style={{fontWeight:900,fontSize:17,color:"#2563EB"}}>{fmt(o.total_price)}</p>
                 </div>
               </div>
             ))}
           </div>
       }
+
+      {/* Modal Detail Pesanan */}
+      {detail && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:200,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setDetail(null)}>
+          <div style={{background:"#fff",borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:520,maxHeight:"85vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+            <div style={{width:40,height:4,background:"#E2E8F0",borderRadius:99,margin:"0 auto 18px"}}/>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <div>
+                <p style={{fontWeight:900,fontSize:15,color:"#2563EB"}}>{detail.order_id}</p>
+                <p style={{fontSize:12,color:"#94A3B8"}}>{detail.order_date}</p>
+              </div>
+              <StatusBadge status={detail.order_status}/>
+            </div>
+
+            {/* Info Pembeli */}
+            <div style={{background:"#F8FAFC",borderRadius:11,padding:"12px 14px",marginBottom:14}}>
+              <p style={{fontSize:12,fontWeight:800,color:"#64748B",marginBottom:7}}>👤 INFO PEMBELI</p>
+              <p style={{fontSize:13,fontWeight:700}}>{detail.customer_name}</p>
+              <p style={{fontSize:12,color:"#64748B"}}>📱 {detail.phone}</p>
+            </div>
+
+            {/* Produk */}
+            <div style={{background:"#F8FAFC",borderRadius:11,padding:"12px 14px",marginBottom:14}}>
+              <p style={{fontSize:12,fontWeight:800,color:"#64748B",marginBottom:10}}>📦 PRODUK DIPESAN</p>
+              {detail.products.map((p,i)=>(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,paddingBottom:8,borderBottom:i<detail.products.length-1?"1px solid #F1F5F9":"none"}}>
+                  <div>
+                    <p style={{fontSize:13,fontWeight:700}}>{p.name}</p>
+                    <p style={{fontSize:12,color:"#94A3B8"}}>{fmt(p.price)} × {p.qty}</p>
+                  </div>
+                  <p style={{fontWeight:900,color:"#2563EB"}}>{fmt(p.price*p.qty)}</p>
+                </div>
+              ))}
+              <div style={{display:"flex",justifyContent:"space-between",paddingTop:8,borderTop:"2px solid #E2E8F0"}}>
+                <p style={{fontWeight:900,fontSize:14}}>Total</p>
+                <p style={{fontWeight:900,fontSize:16,color:"#2563EB"}}>{fmt(detail.total_price)}</p>
+              </div>
+            </div>
+
+            {/* Pengiriman */}
+            <div style={{background:"#F8FAFC",borderRadius:11,padding:"12px 14px",marginBottom:14}}>
+              <p style={{fontSize:12,fontWeight:800,color:"#64748B",marginBottom:7}}>🚚 PENGIRIMAN</p>
+              {detail.delivery_method==="pickup"
+                ?<><p style={{fontSize:13,fontWeight:700}}>🏪 Ambil di Toko</p>{detail.pickup_code&&<p style={{fontSize:15,fontWeight:900,color:"#2563EB",fontFamily:"monospace",letterSpacing:2,marginTop:5}}>Kode: {detail.pickup_code}</p>}</>
+                :<><p style={{fontSize:13,fontWeight:700}}>🚚 Delivery</p><p style={{fontSize:13,color:"#64748B",marginTop:3}}>📍 {detail.address}</p></>
+              }
+            </div>
+
+            {/* Pembayaran */}
+            <div style={{background:"#F8FAFC",borderRadius:11,padding:"12px 14px",marginBottom:18}}>
+              <p style={{fontSize:12,fontWeight:800,color:"#64748B",marginBottom:7}}>💳 PEMBAYARAN</p>
+              <p style={{fontSize:13,fontWeight:700}}>{detail.payment_method}</p>
+            </div>
+
+            {waNumber&&(
+              <a href={`https://wa.me/${waNumber}?text=Halo%2C%20saya%20mau%20tanya%20pesanan%20${detail.order_id}`}
+                target="_blank" rel="noreferrer"
+                style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:"#22C55E",color:"#fff",borderRadius:12,padding:"13px 0",fontWeight:800,fontSize:14,textDecoration:"none",marginBottom:10}}>
+                💬 Tanya via WhatsApp
+              </a>
+            )}
+            <button onClick={()=>setDetail(null)} style={{width:"100%",padding:"12px",background:"#F1F5F9",border:"none",borderRadius:12,fontWeight:700,fontSize:14,cursor:"pointer",color:"#64748B"}}>
+              Tutup
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

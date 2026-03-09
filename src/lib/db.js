@@ -174,3 +174,56 @@ export function subscribeSettings(onChange) {
       payload => onChange(payload)
     ).subscribe();
 }
+
+/* ══════ STAFF ACCOUNTS ══════ */
+export async function fetchStaff() {
+  const { data, error } = await supabase.from("staff_accounts").select("*").order("created_at");
+  if (error) throw error;
+  return data || [];
+}
+export async function loginStaff(username, password) {
+  const { data, error } = await supabase.from("staff_accounts")
+    .select("*").eq("username", username).eq("password", password).eq("is_active", true).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+export async function saveStaff(staff) {
+  if (staff.id) {
+    const { error } = await supabase.from("staff_accounts").update(staff).eq("id", staff.id);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase.from("staff_accounts").insert([staff]);
+    if (error) throw error;
+  }
+}
+export async function deleteStaff(id) {
+  const { error } = await supabase.from("staff_accounts").delete().eq("id", id);
+  if (error) throw error;
+}
+export function subscribeStaff(onChange) {
+  const ch = "staff-" + Math.random().toString(36).slice(2,8);
+  return supabase.channel(ch)
+    .on("postgres_changes", { event: "*", schema: "public", table: "staff_accounts" }, onChange)
+    .subscribe();
+}
+
+/* ══════ CATEGORIES ══════ */
+export async function fetchCategories() {
+  const { data, error } = await supabase.from("categories").select("*").order("created_at");
+  if (error) throw error;
+  return (data||[]).map(c => c.name);
+}
+export async function saveCategory(name, icon="📦") {
+  const { error } = await supabase.from("categories").insert([{ name, icon }]);
+  if (error) throw error;
+}
+export async function deleteCategory(name) {
+  const { error } = await supabase.from("categories").delete().eq("name", name);
+  if (error) throw error;
+}
+export function subscribeCategories(onChange) {
+  const ch = "cats-" + Math.random().toString(36).slice(2,8);
+  return supabase.channel(ch)
+    .on("postgres_changes", { event: "*", schema: "public", table: "categories" }, onChange)
+    .subscribe();
+}
