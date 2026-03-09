@@ -224,37 +224,84 @@ function Dashboard({ products, orders }) {
 
 /* ══════ PRODUCTS MANAGEMENT ══════ */
 function ProductsMgmt({ products, setProducts, toast }) {
-  const [search, setSearch] = useState("");
-  const [catF,   setCatF]   = useState("Semua");
-  const [modal,  setModal]  = useState(false);
-  const [edit,   setEdit]   = useState(null);
-  const [delId,  setDelId]  = useState(null);
-  const [form,   setForm]   = useState({name:"",price:"",desc:"",img:"",stock:"",cat:"Minuman"});
-  const [errs,   setErrs]   = useState({});
+  const [search,  setSearch]  = useState("");
+  const [catF,    setCatF]    = useState("Semua");
+  const [modal,   setModal]   = useState(false);
+  const [edit,    setEdit]    = useState(null);
+  const [delId,   setDelId]   = useState(null);
+  const [form,    setForm]    = useState({name:"",price:"",desc:"",img:"",stock:"",cat:"Minuman"});
+  const [errs,    setErrs]    = useState({});
+  const [saving,  setSaving]  = useState(false);
+  // State tambah stok cepat
+  const [stockModal, setStockModal] = useState(null); // product object
+  const [stockAdd,   setStockAdd]   = useState("");
 
   const filtered = products.filter(p=>(catF==="Semua"||p.cat===catF)&&p.name.toLowerCase().includes(search.toLowerCase()));
 
   const openAdd  = () => { setEdit(null); setForm({name:"",price:"",desc:"",img:"",stock:"",cat:"Minuman"}); setErrs({}); setModal(true); };
-  const openEdit = p  => { setEdit(p); setForm({name:p.name,price:String(p.price),desc:p.desc,img:p.img,stock:String(p.stock),cat:p.cat}); setErrs({}); setModal(true); };
+  const openEdit = p  => { setEdit(p); setForm({name:p.name,price:String(p.price),desc:p.desc||"",img:p.img||"",stock:String(p.stock),cat:p.cat||"Minuman"}); setErrs({}); setModal(true); };
 
   const validate = () => {
     const e={};
-    if(!form.name.trim())        e.name ="Nama wajib diisi";
+    if(!form.name.trim())               e.name ="Nama wajib diisi";
     if(!form.price||isNaN(+form.price)) e.price="Harga tidak valid";
     if(!form.stock||isNaN(+form.stock)) e.stock="Stok tidak valid";
     return e;
   };
 
-  const save = () => {
+  const save = async () => {
     const e=validate(); if(Object.keys(e).length){setErrs(e);return;}
-    const data={...form,price:+form.price,stock:+form.stock,rating:edit?.rating||4.8,sold:edit?.sold||0};
-    if(edit) setProducts(p=>p.map(x=>x.id===edit.id?{...x,...data}:x));
-    else     setProducts(p=>[...p,{...data,id:Date.now()}]);
-    toast.add(edit?"Produk berhasil diperbarui":"Produk berhasil ditambahkan");
-    setModal(false);
+    setSaving(true);
+    const data={name:form.name,price:+form.price,stock:+form.stock,cat:form.cat,img:form.img,desc:form.desc,rating:edit?.rating||4.8,sold:edit?.sold||0};
+    try {
+      const { supabase } = await import("../../lib/supabase.js");
+      if(edit) {
+        const {error} = await supabase.from("products").update(data).eq("id", edit.id);
+        if(error) throw error;
+        setProducts(p=>p.map(x=>x.id===edit.id?{...x,...data}:x));
+        toast.add("Produk berhasil diperbarui ✅");
+      } else {
+        const {data:inserted, error} = await supabase.from("products").insert([data]).select().single();
+        if(error) throw error;
+        setProducts(p=>[...p, inserted]);
+        toast.add("Produk berhasil ditambahkan ✅");
+      }
+      setModal(false);
+    } catch(err) {
+      toast.add("Gagal simpan: "+err.message, "err");
+    }
+    setSaving(false);
   };
 
-  const del = () => { setProducts(p=>p.filter(x=>x.id!==delId)); toast.add("Produk dihapus","err"); setDelId(null); };
+  const del = async () => {
+    try {
+      const { supabase } = await import("../../lib/supabase.js");
+      const {error} = await supabase.from("products").delete().eq("id", delId);
+      if(error) throw error;
+      setProducts(p=>p.filter(x=>x.id!==delId));
+      toast.add("Produk dihapus","err");
+    } catch(err) {
+      toast.add("Gagal hapus: "+err.message,"err");
+    }
+    setDelId(null);
+  };
+
+  // Tambah stok cepat tanpa buka modal edit
+  const saveStockAdd = async () => {
+    if(!stockAdd||isNaN(+stockAdd)||+stockAdd<=0) return;
+    const newStock = (stockModal.stock||0) + (+stockAdd);
+    try {
+      const { supabase } = await import("../../lib/supabase.js");
+      const {error} = await supabase.from("products").update({stock: newStock}).eq("id", stockModal.id);
+      if(error) throw error;
+      setProducts(p=>p.map(x=>x.id===stockModal.id?{...x,stock:newStock}:x));
+      toast.add(`Stok ${stockModal.name} +${stockAdd} → ${newStock} unit ✅`);
+      setStockModal(null); setStockAdd("");
+    } catch(err) {
+      toast.add("Gagal update stok: "+err.message,"err");
+    }
+  };
+
   const sf  = (k,v) => { setForm(p=>({...p,[k]:v})); setErrs(p=>({...p,[k]:""})); };
 
   return (
@@ -299,7 +346,8 @@ function ProductsMgmt({ products, setProducts, toast }) {
                     <td style={{fontWeight:700}}>{p.sold}</td>
                     <td style={{fontWeight:700}}>⭐ {p.rating}</td>
                     <td>
-                      <div style={{display:"flex",gap:6}}>
+                      <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                        <button onClick={()=>{setStockModal(p);setStockAdd("");}} className="btn btn-sm" style={{background:"#ECFDF5",color:"#059669",fontWeight:800,border:"none",cursor:"pointer"}}>+Stok</button>
                         <button onClick={()=>openEdit(p)} className="btn btn-secondary btn-sm">Edit</button>
                         <button onClick={()=>setDelId(p.id)} className="btn btn-danger btn-sm">Hapus</button>
                       </div>
@@ -314,7 +362,7 @@ function ProductsMgmt({ products, setProducts, toast }) {
 
       {/* Add/Edit Modal */}
       <Modal open={modal} onClose={()=>setModal(false)} title={edit?"Edit Produk":"Tambah Produk Baru"}
-        footer={<><button className="btn btn-ghost btn-sm" onClick={()=>setModal(false)}>Batal</button><button className="btn btn-primary btn-sm" onClick={save}>💾 Simpan</button></>}
+        footer={<><button className="btn btn-ghost btn-sm" onClick={()=>setModal(false)}>Batal</button><button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>{saving?"Menyimpan...":"💾 Simpan"}</button></>}
       >
         <Field label="Nama Produk" err={errs.name}>
           <input className={`inp ${errs.name?"inp-err":""}`} value={form.name} onChange={e=>sf("name",e.target.value)} placeholder="Nama produk"/>
@@ -341,6 +389,34 @@ function ProductsMgmt({ products, setProducts, toast }) {
       </Modal>
 
       <Confirm open={!!delId} onClose={()=>setDelId(null)} onOk={del} danger title="Hapus Produk" msg="Yakin ingin menghapus produk ini? Tindakan ini tidak dapat dibatalkan."/>
+
+      {/* Modal Tambah Stok Cepat */}
+      <Modal open={!!stockModal} onClose={()=>{setStockModal(null);setStockAdd("");}} title="📦 Tambah Stok"
+        footer={<><button className="btn btn-ghost btn-sm" onClick={()=>{setStockModal(null);setStockAdd("");}}>Batal</button><button className="btn btn-primary btn-sm" onClick={saveStockAdd} disabled={!stockAdd||isNaN(+stockAdd)||+stockAdd<=0}>✅ Tambahkan</button></>}
+      >
+        {stockModal && (
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:12,background:"#F8FAFC",borderRadius:10,padding:"10px 14px",marginBottom:16}}>
+              <img src={stockModal.img} alt={stockModal.name} style={{width:44,height:44,borderRadius:8,objectFit:"cover"}}/>
+              <div>
+                <p style={{fontWeight:800,fontSize:14}}>{stockModal.name}</p>
+                <p style={{fontSize:12,color:"#64748B"}}>Stok saat ini: <strong style={{color: stockModal.stock<10?"#F59E0B":"#10B981"}}>{stockModal.stock} unit</strong></p>
+              </div>
+            </div>
+            <Field label="Jumlah yang ditambahkan">
+              <input className="inp" type="number" min="1" value={stockAdd}
+                onChange={e=>setStockAdd(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&saveStockAdd()}
+                placeholder="Masukkan jumlah stok tambahan" autoFocus/>
+            </Field>
+            {stockAdd && !isNaN(+stockAdd) && +stockAdd>0 && (
+              <div style={{background:"#EFF6FF",borderRadius:9,padding:"8px 13px",fontSize:13,color:"#1D4ED8",fontWeight:700}}>
+                Stok akan menjadi: {stockModal.stock} + {stockAdd} = <strong>{stockModal.stock + (+stockAdd)} unit</strong>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
