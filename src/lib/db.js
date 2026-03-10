@@ -1,4 +1,5 @@
 import { supabase } from "./supabase.js";
+import { hashPassword, verifyPassword } from "./hash.js";
 
 /* ══════ PRODUCTS ══════ */
 export async function fetchProducts() {
@@ -39,7 +40,6 @@ export async function fetchOrders() {
   if (error) throw error;
   return data || [];
 }
-
 export async function fetchMyOrders(customerId) {
   const { data, error } = await supabase
     .from("orders").select("*")
@@ -48,7 +48,6 @@ export async function fetchMyOrders(customerId) {
   if (error) throw error;
   return data || [];
 }
-
 export async function createOrder(order) {
   const payload = {
     order_id:        order.order_id,
@@ -65,64 +64,49 @@ export async function createOrder(order) {
     pay_detail:      order.pay_detail || null,
     customer_id:     order.customer_id || null,
   };
-  console.log("[createOrder] payload:", payload);
   const { data, error } = await supabase.from("orders").insert([payload]).select().single();
-  if (error) { console.error("[createOrder] error:", error); throw error; }
-  console.log("[createOrder] success:", data);
+  if (error) throw error;
   return data;
 }
-
 export async function updateOrderStatus(orderId, status) {
-  console.log("[updateOrderStatus]", orderId, "->", status);
   const { data, error } = await supabase
     .from("orders").update({ order_status: status })
     .eq("order_id", orderId).select().single();
-  if (error) { console.error("[updateOrderStatus] error:", error); throw error; }
-  console.log("[updateOrderStatus] success:", data);
+  if (error) throw error;
   return data;
 }
 
 /* ══════ REALTIME ══════ */
 export function subscribeOrders(onInsert, onUpdate) {
-  const channelName = "orders-" + Math.random().toString(36).slice(2, 9);
-  console.log("[subscribeOrders] channel:", channelName);
-  return supabase
-    .channel(channelName)
+  const ch = "orders-" + Math.random().toString(36).slice(2, 9);
+  return supabase.channel(ch)
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "orders" },
-      payload => { console.log("[realtime INSERT]", payload.new); onInsert(payload.new); }
-    )
+      payload => onInsert(payload.new))
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders" },
-      payload => { console.log("[realtime UPDATE]", payload.new); onUpdate(payload.new); }
-    )
-    .subscribe((status, err) => {
-      console.log("[subscribeOrders status]", channelName, status, err || "");
-    });
+      payload => onUpdate(payload.new))
+    .subscribe();
 }
-
 export function subscribeProducts(onChange) {
-  const channelName = "products-" + Math.random().toString(36).slice(2, 9);
-  return supabase
-    .channel(channelName)
+  const ch = "products-" + Math.random().toString(36).slice(2, 9);
+  return supabase.channel(ch)
     .on("postgres_changes", { event: "*", schema: "public", table: "products" },
-      payload => onChange(payload)
-    )
+      payload => onChange(payload))
     .subscribe();
 }
 
-/* ══════ CUSTOMER AUTH ══════ */
+/* ══════ CUSTOMER AUTH (dengan hashing) ══════ */
 export async function registerCustomer({ username, phone, password }) {
-  // Cek username
   const { data: exUser } = await supabase.from("customers")
     .select("id").eq("username", username.toLowerCase().trim()).maybeSingle();
   if (exUser) throw new Error("Username sudah dipakai, coba yang lain");
 
-  // Cek phone
   const { data: exPhone } = await supabase.from("customers")
     .select("id").eq("phone", phone.trim()).maybeSingle();
   if (exPhone) throw new Error("Nomor HP sudah terdaftar");
 
+  const hashed = await hashPassword(password);
   const { data, error } = await supabase.from("customers")
-    .insert([{ username: username.toLowerCase().trim(), phone: phone.trim(), password }])
+    .insert([{ username: username.toLowerCase().trim(), phone: phone.trim(), password: hashed }])
     .select().single();
   if (error) throw error;
   return data;
@@ -132,70 +116,95 @@ export async function loginCustomer({ username, password }) {
   const { data, error } = await supabase.from("customers")
     .select("*")
     .eq("username", username.toLowerCase().trim())
-    .eq("password", password)
     .maybeSingle();
   if (error) throw error;
   if (!data) throw new Error("Username atau password salah");
+
+  const ok = await verifyPassword(password, data.password);
+  if (!ok) throw new Error("Username atau password salah");
+
+  // Migrasi otomatis: jika password masih plain text → hash sekarang
+  if (data.password.length !== 64) {
+    const hashed = await hashPassword(password);
+    await supabase.from("customers").update({ password: hashed }).eq("id", data.id);
+    data.password = hashed;
+  }
   return data;
 }
 
-/* ══════ STORE SETTINGS ══════ */
-
-export async function fetchSettings() {
-  const { data, error } = await supabase
-    .from("store_settings").select("key, value");
+export async function updateCustomerPassword(id, newPassword) {
+  const hashed = await hashPassword(newPassword);
+  const { error } = await supabase.from("customers").update({ password: hashed }).eq("id", id);
   if (error) throw error;
-  // Ubah array [{key,value}] jadi object {key: value}
-  return Object.fromEntries((data||[]).map(r => [r.key, r.value]));
 }
 
+/* ══════ STORE SETTINGS ══════ */
+export async function fetchSettings() {
+  const { data, error } = await supabase.from("store_settings").select("key, value");
+  if (error) throw error;
+  return Object.fromEntries((data||[]).map(r => [r.key, r.value]));
+}
 export async function saveSetting(key, value) {
-  const { error } = await supabase
-    .from("store_settings")
+  const { error } = await supabase.from("store_settings")
     .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
   if (error) throw error;
 }
-
 export async function saveSettings(obj) {
-  // Simpan banyak setting sekaligus
   const rows = Object.entries(obj).map(([key, value]) => ({
     key, value, updated_at: new Date().toISOString()
   }));
-  const { error } = await supabase
-    .from("store_settings")
+  const { error } = await supabase.from("store_settings")
     .upsert(rows, { onConflict: "key" });
   if (error) throw error;
 }
-
 export function subscribeSettings(onChange) {
   const ch = "settings-" + Math.random().toString(36).slice(2,8);
   return supabase.channel(ch)
     .on("postgres_changes", { event: "*", schema: "public", table: "store_settings" },
-      payload => onChange(payload)
-    ).subscribe();
+      payload => onChange(payload))
+    .subscribe();
 }
 
-/* ══════ STAFF ACCOUNTS ══════ */
+/* ══════ STAFF ACCOUNTS (dengan hashing) ══════ */
 export async function fetchStaff() {
   const { data, error } = await supabase.from("staff_accounts").select("*").order("created_at");
   if (error) throw error;
   return data || [];
 }
+
 export async function loginStaff(username, password) {
   const { data, error } = await supabase.from("staff_accounts")
-    .select("*").eq("username", username).eq("password", password).eq("is_active", true).maybeSingle();
+    .select("*").eq("username", username).eq("is_active", true).maybeSingle();
   if (error) throw error;
+  if (!data) return null;
+
+  const ok = await verifyPassword(password, data.password);
+  if (!ok) return null;
+
+  // Migrasi otomatis plain text → hash
+  if (data.password.length !== 64) {
+    const hashed = await hashPassword(password);
+    await supabase.from("staff_accounts").update({ password: hashed }).eq("id", data.id);
+    data.password = hashed;
+  }
   return data;
 }
+
 export async function saveStaff(staff) {
-  if (staff.id) {
-    const { error } = await supabase.from("staff_accounts").update(staff).eq("id", staff.id);
+  const toSave = { ...staff };
+  // Hash password jika dikirim plain text (bukan 64 char hex)
+  if (toSave.password && toSave.password.length !== 64) {
+    toSave.password = await hashPassword(toSave.password);
+  }
+  if (toSave.id) {
+    const { error } = await supabase.from("staff_accounts").update(toSave).eq("id", toSave.id);
     if (error) throw error;
   } else {
-    const { error } = await supabase.from("staff_accounts").insert([staff]);
+    const { error } = await supabase.from("staff_accounts").insert([toSave]);
     if (error) throw error;
   }
 }
+
 export async function deleteStaff(id) {
   const { error } = await supabase.from("staff_accounts").delete().eq("id", id);
   if (error) throw error;
@@ -226,4 +235,63 @@ export function subscribeCategories(onChange) {
   return supabase.channel(ch)
     .on("postgres_changes", { event: "*", schema: "public", table: "categories" }, onChange)
     .subscribe();
+}
+
+/* ══════ SUPABASE STORAGE (upload foto produk) ══════ */
+export async function uploadProductImage(file) {
+  // Validasi
+  if (file.size > 2 * 1024 * 1024) throw new Error("Ukuran file maksimal 2MB");
+  const ext = file.name.split(".").pop().toLowerCase();
+  if (!["jpg","jpeg","png","webp"].includes(ext)) throw new Error("Format harus JPG/PNG/WebP");
+
+  const fileName = `products/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+  const { error } = await supabase.storage
+    .from("product-images")
+    .upload(fileName, file, { cacheControl: "3600", upsert: false });
+  if (error) throw error;
+
+  const { data: urlData } = supabase.storage
+    .from("product-images")
+    .getPublicUrl(fileName);
+  return urlData.publicUrl;
+}
+
+/* ══════ VOUCHER / PROMO ══════ */
+export async function fetchVouchers() {
+  const { data, error } = await supabase.from("vouchers").select("*").eq("is_active", true);
+  if (error) return [];
+  return data || [];
+}
+
+export async function validateVoucher(code, subtotal) {
+  const { data, error } = await supabase.from("vouchers")
+    .select("*").eq("code", code.toUpperCase().trim()).eq("is_active", true).maybeSingle();
+  if (error || !data) throw new Error("Kode voucher tidak ditemukan atau sudah tidak aktif");
+  if (data.min_purchase && subtotal < data.min_purchase)
+    throw new Error(`Minimum pembelian ${new Intl.NumberFormat("id-ID",{style:"currency",currency:"IDR",minimumFractionDigits:0}).format(data.min_purchase)}`);
+  if (data.expires_at && new Date(data.expires_at) < new Date())
+    throw new Error("Voucher sudah kadaluarsa");
+  if (data.usage_limit && data.used_count >= data.usage_limit)
+    throw new Error("Voucher sudah habis digunakan");
+  return data;
+}
+
+export async function useVoucher(code) {
+  await supabase.from("vouchers")
+    .update({ used_count: supabase.rpc("increment", { x: 1 }) })
+    .eq("code", code.toUpperCase().trim());
+}
+
+export async function saveVoucher(v) {
+  if (v.id) {
+    const { error } = await supabase.from("vouchers").update(v).eq("id", v.id);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase.from("vouchers").insert([v]);
+    if (error) throw error;
+  }
+}
+export async function deleteVoucher(id) {
+  const { error } = await supabase.from("vouchers").delete().eq("id", id);
+  if (error) throw error;
 }

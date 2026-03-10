@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { fmt, genCode, genId, now } from "../../utils/index.js";
+import { validateVoucher } from "../../lib/db.js";
 import { CATEGORIES, CAT_ICON, ONGKIR } from "../../data/index.js";
 import { Skel, Stars, Empty, Field, Spinner, StatusBadge } from "../ui/index.jsx";
 
@@ -346,16 +347,40 @@ export function Checkout({ cart, onBack, onSuccess, customer, settings }) {
   const [step,      setStep]     = useState(1);
   const [meth,      setMeth]     = useState("");
   const [form,      setForm]     = useState({name: customer?.username||"", phone: customer?.phone||"", address:"", city:""});
-  const [payGroup,  setPayGroup] = useState("");   // transfer | ewallet | qris | card
-  const [payDetail, setPayDetail]= useState("");   // bank/wallet spesifik
+  const [payGroup,  setPayGroup] = useState("");
+  const [payDetail, setPayDetail]= useState("");
   const [errs,      setErrs]     = useState({});
   const [busy,      setBusy]     = useState(false);
   const [qrisDone,  setQrisDone] = useState(false);
-  const [qrisTimer, setQrisTimer]= useState(300); // 5 menit countdown
+  const [qrisTimer, setQrisTimer]= useState(300);
+  // Voucher
+  const [voucherCode,    setVoucherCode]    = useState("");
+  const [voucherApplied, setVoucherApplied] = useState(null);
+  const [voucherErr,     setVoucherErr]     = useState("");
+  const [voucherLoading, setVoucherLoading] = useState(false);
 
   const sub    = cart.reduce((s,i)=>s+i.price*i.qty,0);
   const ongkir = meth==="delivery"?(ONGKIR[form.city]||ONGKIR.Lainnya):0;
-  const total  = sub+ongkir;
+  const discount = voucherApplied
+    ? (voucherApplied.type==="percent"
+        ? Math.floor(sub * voucherApplied.value / 100)
+        : voucherApplied.value)
+    : 0;
+  const total  = Math.max(0, sub + ongkir - discount);
+
+  const applyVoucher = async () => {
+    if (!voucherCode.trim()) return;
+    setVoucherLoading(true); setVoucherErr("");
+    try {
+      const v = await validateVoucher(voucherCode, sub);
+      setVoucherApplied(v);
+      setVoucherErr("");
+    } catch(e) {
+      setVoucherErr(e.message);
+      setVoucherApplied(null);
+    }
+    setVoucherLoading(false);
+  };
 
   // Data bank & e-wallet — baca dari settings (realtime dari Supabase)
   const s = settings || {};
@@ -399,7 +424,7 @@ export function Checkout({ cart, onBack, onSuccess, customer, settings }) {
       payGroup==="ewallet" ? selectedWallet?.name||"" :
       "Kartu Debit/Kredit";
     setTimeout(()=>{
-      onSuccess({order_id:genId(),customer_name:form.name,phone:form.phone,products:cart,total_price:total,delivery_method:meth,address:meth==="delivery"?`${form.address}, ${form.city}`:"Ambil di Toko",pickup_code:meth==="pickup"?genCode():null,order_status:"diproses",order_date:now(),payment_method:payLabel,pay_detail:payDetail});
+      onSuccess({order_id:genId(),customer_name:form.name,phone:form.phone,products:cart,total_price:total,delivery_method:meth,address:meth==="delivery"?`${form.address}, ${form.city}`:"Ambil di Toko",pickup_code:meth==="pickup"?genCode():null,order_status:"diproses",order_date:now(),payment_method:payLabel,pay_detail:payDetail,voucher_code:voucherApplied?.code||null,discount_amount:discount});
     },2400);
   };
 
@@ -518,10 +543,39 @@ export function Checkout({ cart, onBack, onSuccess, customer, settings }) {
                 <span style={{fontSize:13,color:"#64748B"}}>Ongkir ({form.city})</span><span style={{fontSize:13}}>{fmt(ongkir)}</span>
               </div>
             )}
+            {discount>0 && (
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{fontSize:13,color:"#059669",fontWeight:700}}>🎟️ Diskon Voucher</span>
+                <span style={{fontSize:13,color:"#059669",fontWeight:700}}>-{fmt(discount)}</span>
+              </div>
+            )}
             <div style={{display:"flex",justifyContent:"space-between",paddingTop:9,borderTop:"1px solid #F1F5F9",marginTop:6}}>
               <span style={{fontWeight:900,fontSize:15}}>Total Pembayaran</span>
               <span style={{fontWeight:900,fontSize:21,color:"#2563EB"}}>{fmt(total)}</span>
             </div>
+          </div>
+
+          {/* ── VOUCHER ── */}
+          <div className="card" style={{padding:17,marginBottom:13}}>
+            <p style={{fontWeight:800,marginBottom:11,fontSize:14}}>🎟️ Kode Voucher / Promo</p>
+            <div style={{display:"flex",gap:8}}>
+              <input className="inp" value={voucherCode} onChange={e=>{setVoucherCode(e.target.value.toUpperCase());setVoucherErr("");setVoucherApplied(null);}}
+                placeholder="Masukkan kode voucher" style={{flex:1,textTransform:"uppercase",fontWeight:700,letterSpacing:1}}/>
+              <button onClick={applyVoucher} disabled={voucherLoading||!voucherCode.trim()} className="btn btn-secondary"
+                style={{flexShrink:0,padding:"0 14px"}}>
+                {voucherLoading?"...":"Pakai"}
+              </button>
+            </div>
+            {voucherErr && <p style={{fontSize:12,color:"#EF4444",marginTop:7,fontWeight:700}}>❌ {voucherErr}</p>}
+            {voucherApplied && (
+              <div style={{background:"#F0FDF4",border:"1.5px solid #BBF7D0",borderRadius:10,padding:"9px 13px",marginTop:9,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <p style={{fontWeight:800,color:"#059669",fontSize:13}}>✅ Voucher "{voucherApplied.code}" berhasil!</p>
+                  <p style={{fontSize:12,color:"#64748B"}}>{voucherApplied.type==="percent"?`Diskon ${voucherApplied.value}%`:`Diskon ${fmt(voucherApplied.value)}`}</p>
+                </div>
+                <p style={{fontWeight:900,color:"#059669",fontSize:15}}>-{fmt(discount)}</p>
+              </div>
+            )}
           </div>
 
           {/* ── PILIH METODE PEMBAYARAN ── */}

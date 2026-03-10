@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { fetchOrders, updateOrderStatus, subscribeOrders, fetchStaff, saveStaff, deleteStaff, subscribeStaff, fetchCategories, saveCategory, deleteCategory, subscribeCategories, loginStaff, fetchSettings, saveSettings, saveSetting, subscribeSettings } from "../../lib/db.js";
+import { fetchOrders, updateOrderStatus, subscribeOrders, fetchStaff, saveStaff, deleteStaff, subscribeStaff, fetchCategories, saveCategory, deleteCategory, subscribeCategories, loginStaff, fetchSettings, saveSettings, saveSetting, subscribeSettings, uploadProductImage, fetchVouchers, saveVoucher, deleteVoucher } from "../../lib/db.js";
 import { supabase } from "../../lib/supabase.js";
+import { fetchOrderStats, fetchProductStats } from "../../lib/analytics.js";
 import { fmt, now } from "../../utils/index.js";
 import { useToast, ToastBox, StatCard, Modal, Confirm, Empty, Field, Spinner, StatusBadge } from "../ui/index.jsx";
 
@@ -100,12 +101,14 @@ export function LoginPage({ onLogin }) {
 /* ══════ ADMIN SIDEBAR ══════ */
 function Sidebar({ active, setActive, user, onLogout, open, onClose, pendingCount=0 }) {
   const menus = [
-    {id:"dashboard",icon:"📊",label:"Dashboard"},
+    {id:"dashboard",  icon:"📊",label:"Dashboard"},
     {id:"products",   icon:"📦",label:"Produk"},
     {id:"categories", icon:"🏷️",label:"Kategori"},
     {id:"orders",     icon:"🧾",label:"Pesanan", badge: pendingCount},
-    {id:"staff",    icon:"👥",label:"Staff & Akun"},
-    {id:"settings", icon:"⚙️",label:"Pengaturan"},
+    {id:"vouchers",   icon:"🎟️",label:"Voucher & Promo"},
+    {id:"laporan",    icon:"📈",label:"Laporan"},
+    {id:"staff",      icon:"👥",label:"Staff & Akun"},
+    {id:"settings",   icon:"⚙️",label:"Pengaturan"},
   ];
   return (
     <>
@@ -395,23 +398,31 @@ function ProductsMgmt({ products, setProducts, toast, categories=["Minuman","Sna
           </select>
         </Field>
         <Field label="Foto Produk">
-          <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
-            <div style={{flex:1}}>
-              <input className="inp" value={form.img} onChange={e=>sf("img",e.target.value)} placeholder="URL gambar atau upload di bawah"/>
-            </div>
-          </div>
-          <label style={{display:"flex",alignItems:"center",gap:8,background:"#EFF6FF",border:"1.5px solid #BFDBFE",borderRadius:9,padding:"9px 13px",cursor:"pointer",fontWeight:700,fontSize:13,color:"#2563EB",marginTop:8}}>
-            📷 Pilih dari Galeri / Kamera
-            <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>{
+          <input className="inp" value={form.img} onChange={e=>sf("img",e.target.value)} placeholder="URL gambar atau upload di bawah" style={{marginBottom:8}}/>
+          <label style={{display:"flex",alignItems:"center",gap:8,background:"#EFF6FF",border:"1.5px solid #BFDBFE",borderRadius:9,padding:"9px 13px",cursor:"pointer",fontWeight:700,fontSize:13,color:"#2563EB"}}>
+            {uploadingImg ? "⏳ Mengupload..." : "📷 Pilih dari Galeri / Kamera"}
+            <input type="file" accept="image/jpeg,image/png,image/webp" style={{display:"none"}} disabled={uploadingImg} onChange={async e=>{
               const file=e.target.files[0]; if(!file) return;
-              if(file.size>800000){toast.add("Ukuran max 800KB","err");return;}
-              const r=new FileReader(); r.onload=ev=>sf("img",ev.target.result); r.readAsDataURL(file);
+              if(file.size>2*1024*1024){toast.add("Ukuran max 2MB","err");return;}
+              setUploadingImg(true);
+              try {
+                const url = await uploadProductImage(file);
+                sf("img", url);
+                toast.add("✅ Foto berhasil diupload ke server!");
+              } catch(err) {
+                // Fallback ke base64 jika storage belum setup
+                toast.add("Storage belum setup, pakai base64 sementara","info");
+                const r=new FileReader(); r.onload=ev=>sf("img",ev.target.result); r.readAsDataURL(file);
+              }
+              setUploadingImg(false);
             }}/>
           </label>
-          {form.img&&form.img.startsWith("data:")&&(
-            <div style={{marginTop:8,textAlign:"center"}}>
-              <img src={form.img} alt="preview" style={{maxHeight:100,maxWidth:"100%",borderRadius:8,objectFit:"contain"}}/>
-              <p style={{fontSize:11,color:"#10B981",fontWeight:700,marginTop:4}}>✅ Foto siap diupload</p>
+          <p style={{fontSize:11,color:"#94A3B8",marginTop:5}}>Format: JPG/PNG/WebP · Max 2MB · Tersimpan di Supabase Storage</p>
+          {form.img&&(
+            <div style={{marginTop:8,textAlign:"center",background:"#F8FAFC",borderRadius:9,padding:8}}>
+              <img src={form.img} alt="preview" style={{maxHeight:120,maxWidth:"100%",borderRadius:8,objectFit:"contain"}}
+                onError={e=>{e.target.style.display="none";}}/>
+              <p style={{fontSize:11,color:"#10B981",fontWeight:700,marginTop:4}}>✅ Preview foto</p>
             </div>
           )}
         </Field>
@@ -1206,7 +1217,7 @@ export function AdminApp({ user, onLogout, onUserUpdate, products, setProducts,
     return ()=>cleanup();
   },[]);
 
-  const titles = {dashboard:"📊 Dashboard",products:"📦 Manajemen Produk",categories:"🏷️ Kelola Kategori",orders:"🧾 Manajemen Pesanan",staff:"👥 Staff & Akun",settings:"⚙️ Pengaturan"};
+  const titles = {dashboard:"📊 Dashboard",products:"📦 Manajemen Produk",categories:"🏷️ Kelola Kategori",orders:"🧾 Manajemen Pesanan",vouchers:"🎟️ Voucher & Promo",laporan:"📈 Laporan & Analitik",staff:"👥 Staff & Akun",settings:"⚙️ Pengaturan"};
   const pending = orders.filter(o=>o.order_status==="diproses").length;
 
   return(
@@ -1228,6 +1239,8 @@ export function AdminApp({ user, onLogout, onUserUpdate, products, setProducts,
               {menu==="dashboard" && <Dashboard products={products} orders={orders}/>}
               {menu==="products"  && <ProductsMgmt products={products} setProducts={setProducts} toast={toast} categories={categories} setCategories={setCategories}/>}
               {menu==="categories" && <CatMgmt categories={categories} setCategories={setCategories} toast={toast} standalone/>}
+              {menu==="vouchers"   && <VoucherMgmt toast={toast}/>}
+              {menu==="laporan"    && <LaporanPage orders={orders} products={products}/>}
               {menu==="orders"    && <OrdersMgmt orders={orders} setOrders={setOrders} toast={toast}/>}
               {menu==="staff"     && <StaffMgmt currentUser={user} onUserUpdate={onUserUpdate} toast={toast}/>}
               {menu==="settings"  && <Settings user={user} toast={toast}/>}
@@ -1235,6 +1248,300 @@ export function AdminApp({ user, onLogout, onUserUpdate, products, setProducts,
           }
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ══════ LAPORAN & ANALITIK ══════ */
+function LaporanPage({ orders, products }) {
+  const [period,  setPeriod]  = useState(30);
+  const [stats,   setStats]   = useState(null);
+  const [pStats,  setPStats]  = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(()=>{
+    setLoading(true);
+    Promise.all([fetchOrderStats(period), fetchProductStats()])
+      .then(([os, ps])=>{ setStats(os); setPStats(ps); })
+      .catch(console.error)
+      .finally(()=>setLoading(false));
+  },[period]);
+
+  // Hitung dari data orders prop (untuk realtime)
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0,10);
+  const todayOrders  = orders.filter(o=>(o.created_at||o.order_date||"").startsWith(todayStr));
+  const todayRevenue = todayOrders.filter(o=>o.order_status==="selesai").reduce((s,o)=>s+o.total_price,0);
+
+  const exportCSVLaporan = () => {
+    if (!stats) return;
+    const rows = [
+      ["Tanggal","Jumlah Pesanan","Pendapatan"],
+      ...stats.dailyData.map(d=>[d.date, d.count, d.revenue])
+    ];
+    const csv = rows.map(r=>r.join(",")).join("\n");
+    const blob = new Blob([csv],{type:"text/csv"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href=url; a.download=`laporan-${period}hari-${Date.now()}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if(loading) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:80,gap:14,flexDirection:"column"}}><Spinner size={40}/><p style={{fontWeight:700,color:"#64748B"}}>Memuat laporan...</p></div>;
+
+  return (
+    <div style={{padding:"20px 18px 60px",maxWidth:800}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
+        <div>
+          <h2 style={{fontWeight:900,fontSize:19}}>📈 Laporan & Analitik</h2>
+          <p style={{color:"#64748B",fontSize:13}}>Data performa toko Anda</p>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <select className="inp" value={period} onChange={e=>setPeriod(+e.target.value)} style={{width:"auto"}}>
+            <option value={7}>7 Hari</option>
+            <option value={30}>30 Hari</option>
+            <option value={90}>3 Bulan</option>
+          </select>
+          <button onClick={exportCSVLaporan} className="btn btn-secondary btn-sm">📥 Export</button>
+        </div>
+      </div>
+
+      {/* Stat Hari Ini */}
+      <div style={{background:"linear-gradient(135deg,#1E3A8A,#2563EB)",borderRadius:16,padding:"18px 20px",marginBottom:20,color:"#fff"}}>
+        <p style={{opacity:.7,fontSize:12,fontWeight:700,marginBottom:10}}>📅 HARI INI</p>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+          <div><p style={{fontSize:24,fontWeight:900}}>{todayOrders.length}</p><p style={{opacity:.7,fontSize:12}}>Pesanan masuk</p></div>
+          <div><p style={{fontSize:20,fontWeight:900}}>{fmt(todayRevenue)}</p><p style={{opacity:.7,fontSize:12}}>Pendapatan selesai</p></div>
+        </div>
+      </div>
+
+      {stats && <>
+        {/* Stat Periode */}
+        <div className="stat-grid" style={{marginBottom:20}}>
+          <StatCard icon="💰" label={`Pendapatan (${period}hr)`} value={fmt(stats.totalRevenue)} color="#059669" bg="#D1FAE5" sub="Order selesai"/>
+          <StatCard icon="🧾" label={`Total Pesanan`}           value={stats.totalOrders}        color="#2563EB" bg="#EFF6FF" sub={`${period} hari terakhir`}/>
+          <StatCard icon="✅" label="Tingkat Berhasil"           value={stats.successRate+"%"}    color="#6366F1" bg="#EEF2FF" sub="Order selesai/total"/>
+          <StatCard icon="💵" label="Rata-rata Order"            value={fmt(stats.avgOrderValue)} color="#F59E0B" bg="#FEF3C7" sub="Per transaksi selesai"/>
+        </div>
+
+        {/* Status Breakdown */}
+        <div className="card" style={{padding:20,marginBottom:18}}>
+          <p style={{fontWeight:800,fontSize:14,marginBottom:14}}>📊 Status Pesanan</p>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
+            {[
+              {label:"Diproses",key:"diproses",color:"#F59E0B",bg:"#FEF3C7"},
+              {label:"Dikirim", key:"dikirim", color:"#3B82F6",bg:"#EFF6FF"},
+              {label:"Selesai", key:"selesai", color:"#10B981",bg:"#D1FAE5"},
+              {label:"Dibatalkan",key:"dibatalkan",color:"#EF4444",bg:"#FEE2E2"},
+            ].map(({label,key,color,bg})=>{
+              const count = stats.statusCount[key]||0;
+              const pct   = stats.totalOrders ? Math.round(count/stats.totalOrders*100) : 0;
+              return (
+                <div key={key} style={{background:bg,borderRadius:12,padding:"14px 16px"}}>
+                  <p style={{fontSize:24,fontWeight:900,color}}>{count}</p>
+                  <p style={{fontSize:13,fontWeight:700,color}}>{label}</p>
+                  <div style={{height:4,background:"rgba(0,0,0,.08)",borderRadius:99,marginTop:8}}>
+                    <div style={{height:"100%",background:color,borderRadius:99,width:pct+"%",transition:"width .5s"}}/>
+                  </div>
+                  <p style={{fontSize:11,color,marginTop:4,fontWeight:700}}>{pct}%</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Metode Pembayaran */}
+        <div className="card" style={{padding:20,marginBottom:18}}>
+          <p style={{fontWeight:800,fontSize:14,marginBottom:14}}>💳 Metode Pembayaran Terpopuler</p>
+          {Object.entries(stats.paymentCount).sort((a,b)=>b[1]-a[1]).map(([method,count])=>{
+            const pct = stats.totalOrders ? Math.round(count/stats.totalOrders*100) : 0;
+            return (
+              <div key={method} style={{marginBottom:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                  <span style={{fontSize:13,fontWeight:700}}>{method}</span>
+                  <span style={{fontSize:13,color:"#64748B"}}>{count}x · {pct}%</span>
+                </div>
+                <div style={{height:6,background:"#F1F5F9",borderRadius:99}}>
+                  <div style={{height:"100%",background:"#2563EB",borderRadius:99,width:pct+"%",transition:"width .5s"}}/>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Omzet harian (text-based chart) */}
+        <div className="card" style={{padding:20,marginBottom:18}}>
+          <p style={{fontWeight:800,fontSize:14,marginBottom:14}}>📅 Omzet Harian (7 hari terakhir)</p>
+          {stats.dailyData.slice(-7).map(d=>{
+            const maxRev = Math.max(...stats.dailyData.map(x=>x.revenue),1);
+            const pct = Math.round(d.revenue/maxRev*100);
+            return (
+              <div key={d.date} style={{marginBottom:8}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                  <span style={{fontSize:12,color:"#64748B"}}>{d.date.slice(5)}</span>
+                  <span style={{fontSize:12,fontWeight:700,color:"#2563EB"}}>{fmt(d.revenue)} ({d.count} order)</span>
+                </div>
+                <div style={{height:8,background:"#F1F5F9",borderRadius:99}}>
+                  <div style={{height:"100%",background:"linear-gradient(90deg,#2563EB,#60A5FA)",borderRadius:99,width:pct+"%",transition:"width .5s"}}/>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </>}
+
+      {/* Produk stats */}
+      {pStats && (
+        <div className="card" style={{padding:20}}>
+          <p style={{fontWeight:800,fontSize:14,marginBottom:14}}>🏆 Produk Terlaris</p>
+          {pStats.topSelling.map((p,i)=>(
+            <div key={p.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:i<4?"1px solid #F1F5F9":"none"}}>
+              <span style={{width:24,fontWeight:900,color:"#94A3B8",fontSize:13}}>#{i+1}</span>
+              <img src={p.img} alt={p.name} style={{width:40,height:40,objectFit:"cover",borderRadius:9,flexShrink:0}} onError={e=>{e.target.src="https://via.placeholder.com/40?text=📦";}}/>
+              <div style={{flex:1}}>
+                <p style={{fontWeight:800,fontSize:13}}>{p.name}</p>
+                <p style={{fontSize:11,color:"#64748B"}}>{p.sold} terjual · Stok: {p.stock}</p>
+              </div>
+              <p style={{fontWeight:900,color:"#2563EB",fontSize:13}}>{fmt(p.price)}</p>
+            </div>
+          ))}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginTop:14,paddingTop:14,borderTop:"1px solid #F1F5F9"}}>
+            <div style={{textAlign:"center"}}>
+              <p style={{fontSize:22,fontWeight:900,color:"#EF4444"}}>{pStats.outOfStock}</p>
+              <p style={{fontSize:11,color:"#64748B"}}>Habis</p>
+            </div>
+            <div style={{textAlign:"center"}}>
+              <p style={{fontSize:22,fontWeight:900,color:"#F59E0B"}}>{pStats.lowStock}</p>
+              <p style={{fontSize:11,color:"#64748B"}}>Stok Kritis</p>
+            </div>
+            <div style={{textAlign:"center"}}>
+              <p style={{fontSize:22,fontWeight:900,color:"#10B981"}}>{pStats.totalInventory}</p>
+              <p style={{fontSize:11,color:"#64748B"}}>Total Unit</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════ VOUCHER MANAGEMENT ══════ */
+function VoucherMgmt({ toast }) {
+  const [list,    setList]    = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal,   setModal]   = useState(false);
+  const [edit,    setEdit]    = useState(null);
+  const [delId,   setDelId]   = useState(null);
+  const [saving,  setSaving]  = useState(false);
+  const emptyForm = {code:"",type:"percent",value:"",min_purchase:"",expires_at:"",usage_limit:"",description:"",is_active:true};
+  const [form, setForm] = useState(emptyForm);
+
+  useEffect(()=>{
+    fetchVouchers().then(setList).catch(()=>toast.add("Gagal load voucher","err")).finally(()=>setLoading(false));
+  },[]);
+
+  const open = (v=null) => {
+    setEdit(v);
+    setForm(v ? {...v, value:v.value+"", min_purchase:v.min_purchase||"", usage_limit:v.usage_limit||"", expires_at:v.expires_at?v.expires_at.slice(0,10):""} : emptyForm);
+    setModal(true);
+  };
+
+  const save = async () => {
+    if(!form.code.trim()||!form.value){ toast.add("Kode dan nilai wajib diisi","err"); return; }
+    setSaving(true);
+    try {
+      const payload = {
+        ...form,
+        code: form.code.toUpperCase().trim(),
+        value: +form.value,
+        min_purchase: form.min_purchase ? +form.min_purchase : null,
+        usage_limit:  form.usage_limit  ? +form.usage_limit  : null,
+        expires_at:   form.expires_at   ? new Date(form.expires_at).toISOString() : null,
+        used_count:   edit?.used_count || 0,
+      };
+      if(edit) payload.id = edit.id;
+      await saveVoucher(payload);
+      await fetchVouchers().then(setList);
+      toast.add(edit?"Voucher diperbarui ✅":"Voucher berhasil dibuat ✅");
+      setModal(false);
+    } catch(e) { toast.add("Gagal: "+e.message,"err"); }
+    setSaving(false);
+  };
+
+  const del = async () => {
+    try { await deleteVoucher(delId); setList(p=>p.filter(v=>v.id!==delId)); toast.add("Voucher dihapus","err"); }
+    catch(e) { toast.add("Gagal hapus","err"); }
+    setDelId(null);
+  };
+
+  const sf = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  if(loading) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:60,gap:12}}><Spinner size={28}/><p style={{fontWeight:700,color:"#64748B"}}>Memuat voucher...</p></div>;
+
+  return (
+    <div style={{padding:"20px 18px 60px",maxWidth:700}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
+        <div>
+          <h2 style={{fontWeight:900,fontSize:19}}>🎟️ Voucher & Promo</h2>
+          <p style={{color:"#64748B",fontSize:13}}>{list.length} voucher aktif</p>
+        </div>
+        <button onClick={()=>open()} className="btn btn-primary">+ Buat Voucher</button>
+      </div>
+
+      {!list.length
+        ? <Empty icon="🎟️" title="Belum ada voucher" desc="Buat voucher pertama untuk menarik pembeli"/>
+        : <div style={{display:"flex",flexDirection:"column",gap:11}}>
+            {list.map(v=>(
+              <div key={v.id} className="card" style={{padding:17,border:`1.5px solid ${v.is_active?"#BFDBFE":"#E2E8F0"}`}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:9}}>
+                  <div>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                      <span style={{background:"#EFF6FF",border:"1.5px dashed #2563EB",borderRadius:8,padding:"3px 12px",fontWeight:900,fontSize:15,color:"#2563EB",fontFamily:"monospace",letterSpacing:1}}>{v.code}</span>
+                      <span className={`badge ${v.is_active?"b-green":"b-gray"}`} style={{fontSize:11}}>{v.is_active?"Aktif":"Nonaktif"}</span>
+                    </div>
+                    <p style={{fontSize:13,color:"#64748B"}}>{v.description||"Tidak ada deskripsi"}</p>
+                  </div>
+                  <div style={{display:"flex",gap:6,flexShrink:0}}>
+                    <button onClick={()=>open(v)} className="btn btn-secondary btn-sm">Edit</button>
+                    <button onClick={()=>setDelId(v.id)} className="btn btn-danger btn-sm">Hapus</button>
+                  </div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,background:"#F8FAFC",borderRadius:10,padding:11}}>
+                  <div><p style={{fontSize:11,color:"#94A3B8",fontWeight:700}}>NILAI</p><p style={{fontSize:14,fontWeight:900,color:"#2563EB"}}>{v.type==="percent"?v.value+"%":fmt(v.value)}</p></div>
+                  <div><p style={{fontSize:11,color:"#94A3B8",fontWeight:700}}>DIGUNAKAN</p><p style={{fontSize:14,fontWeight:900}}>{v.used_count||0}{v.usage_limit?"/"+v.usage_limit:" kali"}</p></div>
+                  <div><p style={{fontSize:11,color:"#94A3B8",fontWeight:700}}>KADALUARSA</p><p style={{fontSize:12,fontWeight:700}}>{v.expires_at?new Date(v.expires_at).toLocaleDateString("id-ID"):"Selamanya"}</p></div>
+                </div>
+              </div>
+            ))}
+          </div>
+      }
+
+      <Modal open={modal} onClose={()=>setModal(false)} title={edit?"Edit Voucher":"Buat Voucher Baru"}
+        footer={<><button className="btn btn-ghost btn-sm" onClick={()=>setModal(false)}>Batal</button><button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>{saving?"Menyimpan...":"💾 Simpan"}</button></>}>
+        <Field label="Kode Voucher"><input className="inp" value={form.code} onChange={e=>sf("code",e.target.value.toUpperCase())} placeholder="Cth: HEMAT20" style={{fontFamily:"monospace",fontWeight:800,letterSpacing:2,textTransform:"uppercase"}}/></Field>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
+          <Field label="Tipe Diskon">
+            <select className="inp" value={form.type} onChange={e=>sf("type",e.target.value)}>
+              <option value="percent">Persen (%)</option>
+              <option value="fixed">Nominal (Rp)</option>
+            </select>
+          </Field>
+          <Field label={form.type==="percent"?"Nilai (%)":"Nilai (Rp)"}>
+            <input className="inp" type="number" value={form.value} onChange={e=>sf("value",e.target.value)} placeholder={form.type==="percent"?"20":"10000"}/>
+          </Field>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
+          <Field label="Min. Pembelian (Rp)"><input className="inp" type="number" value={form.min_purchase} onChange={e=>sf("min_purchase",e.target.value)} placeholder="Kosongkan = bebas"/></Field>
+          <Field label="Batas Pemakaian"><input className="inp" type="number" value={form.usage_limit} onChange={e=>sf("usage_limit",e.target.value)} placeholder="Kosongkan = tidak terbatas"/></Field>
+        </div>
+        <Field label="Kadaluarsa"><input className="inp" type="date" value={form.expires_at} onChange={e=>sf("expires_at",e.target.value)}/></Field>
+        <Field label="Deskripsi"><input className="inp" value={form.description} onChange={e=>sf("description",e.target.value)} placeholder="Cth: Diskon 20% untuk semua produk"/></Field>
+        <label style={{display:"flex",alignItems:"center",gap:9,cursor:"pointer",marginTop:6}}>
+          <input type="checkbox" checked={form.is_active} onChange={e=>sf("is_active",e.target.checked)} style={{width:16,height:16}}/>
+          <span style={{fontSize:13,fontWeight:700}}>Voucher Aktif</span>
+        </label>
+      </Modal>
+      <Confirm open={!!delId} onClose={()=>setDelId(null)} onOk={del} danger title="Hapus Voucher" msg="Yakin ingin menghapus voucher ini?"/>
     </div>
   );
 }
