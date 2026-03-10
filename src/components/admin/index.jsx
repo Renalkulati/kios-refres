@@ -101,8 +101,9 @@ export function LoginPage({ onLogin }) {
 function Sidebar({ active, setActive, user, onLogout, open, onClose, pendingCount=0 }) {
   const menus = [
     {id:"dashboard",icon:"📊",label:"Dashboard"},
-    {id:"products", icon:"📦",label:"Produk"},
-    {id:"orders",   icon:"🧾",label:"Pesanan", badge: pendingCount},
+    {id:"products",   icon:"📦",label:"Produk"},
+    {id:"categories", icon:"🏷️",label:"Kategori"},
+    {id:"orders",     icon:"🧾",label:"Pesanan", badge: pendingCount},
     {id:"staff",    icon:"👥",label:"Staff & Akun"},
     {id:"settings", icon:"⚙️",label:"Pengaturan"},
   ];
@@ -420,9 +421,6 @@ function ProductsMgmt({ products, setProducts, toast, categories=["Minuman","Sna
       </Modal>
 
       <Confirm open={!!delId} onClose={()=>setDelId(null)} onOk={del} danger title="Hapus Produk" msg="Yakin ingin menghapus produk ini? Tindakan ini tidak dapat dibatalkan."/>
-
-      {/* Kelola Kategori */}
-      <CatMgmt categories={categories} setCategories={setCategories} toast={toast}/>
 
       {/* Modal Tambah Stok Cepat */}
       <Modal open={!!stockModal} onClose={()=>{setStockModal(null);setStockAdd("");}} title="📦 Tambah Stok"
@@ -881,84 +879,107 @@ function Settings({ user, toast }) {
 }
 
 /* ══════ CATEGORY MANAGEMENT (embedded in ProductsMgmt) ══════ */
-function CatMgmt({ categories, setCategories, toast }) {
+function CatMgmt({ categories, setCategories, toast, standalone=false }) {
+  const PRESET_ICONS = ["🍔","🍜","🍱","🍕","🍣","🥗","🥤","☕","🧃","🍦","🍰","🍪","🍫","🍬","🛒","🧴","🧹","💊","🧁","🌮","🥩","🍗","🫙","🧂","🥫","🍞","🧀","🥚","🧆","🥞","📦","🏷️","⭐","🎁","🛍️"];
   const [newCat,  setNewCat]  = useState("");
   const [newIcon, setNewIcon] = useState("📦");
   const [saving,  setSaving]  = useState(false);
-  const [open,    setOpen]    = useState(false);
-  const ICONS = ["📦","🥤","🍿","🍜","🧴","🍎","🧃","🍕","🧹","💊","🛁","🧺","🥛","🍞","🍫","🧊"];
+  const [delName, setDelName] = useState(null);
 
-  const add = async ()=>{
-    if(!newCat.trim()){ toast.add("Nama kategori wajib diisi","err"); return; }
-    if(categories.includes(newCat.trim())){ toast.add("Kategori sudah ada","err"); return; }
+  const add = async () => {
+    const name = newCat.trim();
+    if(!name){ toast.add("Nama kategori tidak boleh kosong","err"); return; }
+    if(categories.includes(name)){ toast.add("Kategori sudah ada","err"); return; }
     setSaving(true);
     try{
-      await saveCategory(newCat.trim(), newIcon);
-      setCategories(p=>[...p, newCat.trim()]);
-      toast.add(`Kategori "${newCat.trim()}" ditambahkan ✅`);
+      await saveCategory(name, newIcon);
+      const updated = [...categories, name];
+      setCategories(updated);
       setNewCat(""); setNewIcon("📦");
+      toast.add("✅ Kategori '"+name+"' berhasil ditambahkan");
     }catch(e){ toast.add("Gagal: "+e.message,"err"); }
     setSaving(false);
   };
 
-  const del = async (name)=>{
+  const del = async (name) => {
     try{
       await deleteCategory(name);
-      setCategories(p=>p.filter(c=>c!==name));
-      toast.add(`Kategori "${name}" dihapus`,"err");
-    }catch(e){ toast.add("Gagal hapus: "+e.message,"err"); }
+      setCategories(categories.filter(c=>c!==name));
+      toast.add("Kategori '"+name+"' dihapus","err");
+    }catch(e){ toast.add("Gagal hapus","err"); }
+    setDelName(null);
   };
 
-  const DEFAULT_CATS = ["Minuman","Snack","Makanan Instan","Kebutuhan Harian"];
-
-  return(
-    <div className="card" style={{padding:18,marginTop:14}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:open?14:0}}>
-        <div>
-          <h3 style={{fontWeight:800,fontSize:14}}>🏷️ Kelola Kategori</h3>
-          <p style={{fontSize:12,color:"#94A3B8"}}>{categories.length} kategori tersedia</p>
-        </div>
-        <button onClick={()=>setOpen(p=>!p)} className="btn btn-secondary btn-sm">{open?"Tutup":"Kelola"}</button>
-      </div>
-      {open&&(
-        <div>
-          {/* Daftar kategori */}
-          <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:14}}>
-            {categories.map(c=>(
-              <div key={c} style={{display:"flex",alignItems:"center",gap:5,background:"#EFF6FF",borderRadius:99,padding:"5px 12px",fontSize:13,fontWeight:700,color:"#1D4ED8"}}>
-                {c}
-                {!DEFAULT_CATS.includes(c)&&(
-                  <button onClick={()=>del(c)} style={{background:"none",border:"none",cursor:"pointer",color:"#EF4444",fontSize:14,lineHeight:1,padding:0,marginLeft:3}}>×</button>
-                )}
-              </div>
-            ))}
-          </div>
-          {/* Tambah kategori baru */}
-          <p style={{fontSize:12,fontWeight:800,color:"#64748B",marginBottom:8}}>TAMBAH KATEGORI BARU</p>
-          <div style={{display:"flex",gap:8,alignItems:"flex-start",flexWrap:"wrap"}}>
+  const body = (
+    <div>
+      {/* Tambah kategori baru */}
+      <div className="card" style={{padding:20,marginBottom:18}}>
+        <p style={{fontWeight:800,fontSize:14,marginBottom:14}}>➕ Tambah Kategori Baru</p>
+        <div style={{display:"flex",gap:10,marginBottom:12}}>
+          <div style={{flex:1}}>
             <input className="inp" value={newCat} onChange={e=>setNewCat(e.target.value)}
-              placeholder="Nama kategori baru" style={{flex:1,minWidth:160}}
+              placeholder="Nama kategori, cth: Makanan Berat"
               onKeyDown={e=>e.key==="Enter"&&add()}/>
-            <button onClick={add} disabled={saving||!newCat.trim()} className="btn btn-primary btn-sm">
-              {saving?"...":"+ Tambah"}
-            </button>
           </div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:10}}>
-            {ICONS.map(ic=>(
-              <button key={ic} onClick={()=>setNewIcon(ic)}
-                style={{width:34,height:34,borderRadius:8,border:`2px solid ${newIcon===ic?"#2563EB":"transparent"}`,background:newIcon===ic?"#EFF6FF":"#F8FAFC",cursor:"pointer",fontSize:16}}>
-                {ic}
-              </button>
-            ))}
-          </div>
+          <button onClick={add} disabled={saving||!newCat.trim()} className="btn btn-primary" style={{flexShrink:0}}>
+            {saving?"...":"+ Tambah"}
+          </button>
         </div>
-      )}
+        <p style={{fontSize:12,fontWeight:700,color:"#64748B",marginBottom:8}}>Pilih ikon:</p>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+          {PRESET_ICONS.map(ic=>(
+            <button key={ic} onClick={()=>setNewIcon(ic)}
+              style={{width:38,height:38,borderRadius:9,border:newIcon===ic?"2.5px solid #2563EB":"1.5px solid #E2E8F0",
+                background:newIcon===ic?"#EFF6FF":"#F8FAFC",fontSize:18,cursor:"pointer",
+                boxShadow:newIcon===ic?"0 2px 8px rgba(37,99,235,0.2)":"none"}}>
+              {ic}
+            </button>
+          ))}
+        </div>
+        <div style={{marginTop:12,background:"#F8FAFC",borderRadius:9,padding:"9px 13px",fontSize:13,color:"#1D4ED8",fontWeight:700}}>
+          Preview: <span style={{fontSize:16}}>{newIcon}</span> {newCat||"Nama Kategori"}
+        </div>
+      </div>
+
+      {/* List kategori */}
+      <div className="card" style={{overflow:"hidden"}}>
+        <div style={{padding:"14px 18px 10px",borderBottom:"1px solid #F1F5F9"}}>
+          <p style={{fontWeight:800,fontSize:14}}>📋 Daftar Kategori ({categories.length})</p>
+        </div>
+        {!categories.length
+          ? <Empty icon="🏷️" title="Belum ada kategori" desc="Tambah kategori di atas"/>
+          : <div style={{padding:"8px 0"}}>
+              {categories.map((c,i)=>(
+                <div key={c} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 18px",borderBottom:i<categories.length-1?"1px solid #F8FAFC":"none"}}>
+                  <span style={{fontSize:20,width:32,textAlign:"center"}}>📦</span>
+                  <p style={{flex:1,fontWeight:700,fontSize:14}}>{c}</p>
+                  <span className="badge b-blue" style={{fontSize:11}}>Aktif</span>
+                  <button onClick={()=>setDelName(c)} className="btn btn-danger btn-sm">Hapus</button>
+                </div>
+              ))}
+            </div>
+        }
+      </div>
+      <Confirm open={!!delName} onClose={()=>setDelName(null)} onOk={()=>del(delName)} danger
+        title="Hapus Kategori" msg={`Hapus kategori "${delName}"? Produk yang menggunakan kategori ini tidak ikut terhapus.`}/>
     </div>
   );
+
+  if(standalone) return (
+    <div style={{padding:"20px 18px 60px",maxWidth:640}}>
+      <div style={{marginBottom:18}}>
+        <h2 style={{fontWeight:900,fontSize:19}}>🏷️ Kelola Kategori</h2>
+        <p style={{color:"#64748B",fontSize:13}}>{categories.length} kategori tersedia · Digunakan untuk mengelompokkan produk</p>
+      </div>
+      {body}
+    </div>
+  );
+
+  return body;
 }
 
-/* ══════ STAFF MANAGEMENT ══════ */
-function StaffMgmt({ currentUser, toast }) {
+
+function StaffMgmt({ currentUser, onUserUpdate, toast }) {
   const [staffList, setStaffList] = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [modal,     setModal]     = useState(false);
@@ -1012,24 +1033,40 @@ function StaffMgmt({ currentUser, toast }) {
   };
 
   const saveProfile = async ()=>{
-    if(!profForm.name){ toast.add("Nama wajib diisi","err"); return; }
+    if(!profForm.name.trim()){ toast.add("Nama wajib diisi","err"); return; }
     setSaving(true);
     try{
-      const newPassword = profForm.password||currentUser.password;
-      const upd = {id:currentUser.id, name:profForm.name, phone:profForm.phone,
-        password: newPassword, username:currentUser.username, role:currentUser.role,
-        avatar: (profForm.name||currentUser.name).split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase()
+      const newPassword = profForm.password.trim()||currentUser.password;
+      const newName = profForm.name.trim();
+      const newPhone = profForm.phone.trim();
+      const newAvatar = newName.split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase();
+      const upd = {
+        id: currentUser.id,
+        name: newName,
+        phone: newPhone,
+        password: newPassword,
+        username: currentUser.username,
+        role: currentUser.role,
+        is_active: true,
+        avatar: newAvatar
       };
       await saveStaff(upd);
-      // PENTING: Update session supaya login berikutnya pakai password baru
+      // Update list staff lokal supaya UI langsung berubah
+      setStaffList(prev => prev.map(s => s.id===currentUser.id ? {...s,...upd} : s));
+      // Beritahu parent (AdminStandalone/AdminApp) supaya session diperbarui
       const updatedUser = {...currentUser, ...upd};
-      const ADMIN_SESSION = "kios_refres_admin";
-      localStorage.setItem(ADMIN_SESSION, JSON.stringify(updatedUser));
-      toast.add("Profil berhasil diperbarui ✅ " + (profForm.password?"Password baru aktif":""));
+      if (onUserUpdate) {
+        onUserUpdate(updatedUser);
+      } else {
+        // fallback: update localStorage langsung
+        localStorage.setItem("kios_refres_admin_v2", JSON.stringify(updatedUser));
+      }
+      toast.add("✅ Profil berhasil diperbarui!" + (profForm.password.trim()?" Password baru aktif.":""));
       setMyProfile(false);
-      // Reload page supaya session fresh
-      setTimeout(()=>window.location.reload(), 1200);
-    }catch(e){ toast.add("Gagal: "+e.message,"err"); }
+    }catch(e){
+      console.error("saveProfile error:", e);
+      toast.add("Gagal simpan: "+e.message,"err");
+    }
     setSaving(false);
   };
 
@@ -1125,29 +1162,39 @@ function StaffMgmt({ currentUser, toast }) {
 }
 
 /* ══════ ADMIN APP (entry) ══════ */
-export function AdminApp({ user, onLogout, products, setProducts, dbError }) {
-  const [menu,       setMenu]       = useState("dashboard");
-  const [sOpen,      setSOpen]      = useState(false);
-  const [orders,     setOrders]     = useState([]);
-  const [categories, setCategories] = useState(["Minuman","Snack","Makanan Instan","Kebutuhan Harian"]);
-  const [loadingOrders, setLoadingOrders] = useState(true);
+export function AdminApp({ user, onLogout, onUserUpdate, products, setProducts,
+  orders: ordersInit, setOrders: setOrdersExt,
+  categories: catsInit, setCategories: setCatsExt,
+  dbError }) {
+
+  const [menu,   setMenu]  = useState("dashboard");
+  const [sOpen,  setSOpen] = useState(false);
+  const [orders,     setOrdersLocal]     = useState(ordersInit||[]);
+  const [categories, setCategoriesLocal] = useState(catsInit||["Minuman","Snack","Makanan Instan","Kebutuhan Harian"]);
+  const [loadingOrders, setLoadingOrders] = useState(!ordersInit);
   const toast = useToast();
 
-  const titles = {dashboard:"📊 Dashboard",products:"📦 Manajemen Produk",orders:"🧾 Manajemen Pesanan",staff:"👥 Staff & Akun",settings:"⚙️ Pengaturan"};
+  const setOrders     = (v) => { setOrdersLocal(v);     if(setOrdersExt)     setOrdersExt(v); };
+  const setCategories = (v) => { setCategoriesLocal(v); if(setCatsExt) setCatsExt(v); };
+
+  // Sync jika parent kirim ordersInit setelah mount
+  useEffect(()=>{ if(ordersInit) setOrdersLocal(ordersInit); }, [ordersInit]);
+  useEffect(()=>{ if(catsInit)   setCategoriesLocal(catsInit); }, [catsInit]);
 
   useEffect(()=>{
+    if(ordersInit) { setLoadingOrders(false); return; } // sudah dari parent
     let cleanup=()=>{};
     async function load(){
       try{
         const [data, cats] = await Promise.all([fetchOrders(), fetchCategories()]);
-        setOrders(data||[]);
-        if(cats.length) setCategories(cats);
+        setOrdersLocal(data||[]);
+        if(cats.length) setCategoriesLocal(cats);
         setLoadingOrders(false);
         const ch = subscribeOrders(
-          (n)=>{ setOrders(prev=>{ if(prev.find(o=>o.order_id===n.order_id)) return prev; toast.add("🔔 Pesanan baru dari "+n.customer_name+"!","info"); return [n,...prev]; }); },
-          (u)=>setOrders(prev=>prev.map(o=>o.order_id===u.order_id?u:o))
+          (n)=>{ setOrdersLocal(prev=>{ if(prev.find(o=>o.order_id===n.order_id)) return prev; toast.add("🔔 Pesanan baru dari "+n.customer_name+"!","info"); return [n,...prev]; }); },
+          (u)=>setOrdersLocal(prev=>prev.map(o=>o.order_id===u.order_id?u:o))
         );
-        const catCh = subscribeCategories(()=>fetchCategories().then(c=>{if(c.length)setCategories(c);}).catch(console.error));
+        const catCh = subscribeCategories(()=>fetchCategories().then(c=>{if(c.length)setCategoriesLocal(c);}).catch(console.error));
         cleanup=()=>{ ch.unsubscribe(); catCh.unsubscribe(); };
       }catch(e){
         console.error("Admin load error:",e);
@@ -1159,10 +1206,13 @@ export function AdminApp({ user, onLogout, products, setProducts, dbError }) {
     return ()=>cleanup();
   },[]);
 
+  const titles = {dashboard:"📊 Dashboard",products:"📦 Manajemen Produk",categories:"🏷️ Kelola Kategori",orders:"🧾 Manajemen Pesanan",staff:"👥 Staff & Akun",settings:"⚙️ Pengaturan"};
+  const pending = orders.filter(o=>o.order_status==="diproses").length;
+
   return(
     <div className="admin-layout">
       <ToastBox list={toast.list} remove={toast.remove}/>
-      <Sidebar active={menu} setActive={setMenu} user={user} onLogout={onLogout} open={sOpen} onClose={()=>setSOpen(false)} pendingCount={orders.filter(o=>o.order_status==="diproses").length}/>
+      <Sidebar active={menu} setActive={setMenu} user={user} onLogout={onLogout} open={sOpen} onClose={()=>setSOpen(false)} pendingCount={pending}/>
       <div className="admin-main">
         <Topbar title={titles[menu]||"Dashboard"} onMenu={()=>setSOpen(p=>!p)} user={user}/>
         <div style={{background:"#F0F4FF",minHeight:"calc(100vh - 56px)"}}>
@@ -1177,8 +1227,9 @@ export function AdminApp({ user, onLogout, products, setProducts, dbError }) {
             :<>
               {menu==="dashboard" && <Dashboard products={products} orders={orders}/>}
               {menu==="products"  && <ProductsMgmt products={products} setProducts={setProducts} toast={toast} categories={categories} setCategories={setCategories}/>}
+              {menu==="categories" && <CatMgmt categories={categories} setCategories={setCategories} toast={toast} standalone/>}
               {menu==="orders"    && <OrdersMgmt orders={orders} setOrders={setOrders} toast={toast}/>}
-              {menu==="staff"     && <StaffMgmt currentUser={user} toast={toast}/>}
+              {menu==="staff"     && <StaffMgmt currentUser={user} onUserUpdate={onUserUpdate} toast={toast}/>}
               {menu==="settings"  && <Settings user={user} toast={toast}/>}
             </>
           }
