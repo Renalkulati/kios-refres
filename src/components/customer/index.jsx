@@ -10,6 +10,14 @@ const parseProducts = (p) => {
   if (Array.isArray(p)) return p;
   try { return JSON.parse(p); } catch { return []; }
 };
+// Sanitize WA number: 08xxx → 628xxx, +628xxx → 628xxx
+const sanitizeWA = (n) => {
+  if (!n) return "";
+  const clean = n.replace(/[^0-9]/g,"");
+  if (clean.startsWith("0")) return "62" + clean.slice(1);
+  if (clean.startsWith("62")) return clean;
+  return clean;
+};
 
 export function Splash({ onDone }) {
   const [p, setP] = useState(0);
@@ -809,7 +817,7 @@ export function Success({ order, onHome, settings }) {
               <p style={{fontSize:12,color:"#475569",lineHeight:1.6}}>{s}</p>
             </div>
           ))}
-          <a href={`https://wa.me/${settings?.wa_number||"6281234567890"}?text=Halo%20saya%20baru%20pesan%20dengan%20No.%20${order.order_id}`} target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:"#22C55E",color:"#fff",borderRadius:11,padding:"10px 0",fontWeight:800,fontSize:13,marginTop:4}}>
+          <a href={`https://wa.me/${sanitizeWA(settings?.wa_number)||"6281234567890"}?text=Halo%20saya%20baru%20pesan%20dengan%20No.%20${order.order_id}`} target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:"#22C55E",color:"#fff",borderRadius:11,padding:"10px 0",fontWeight:800,fontSize:13,marginTop:4}}>
             <span style={{fontSize:18}}>💬</span> Hubungi {settings?.wa_name||"Admin"} via WhatsApp
           </a>
         </div>
@@ -822,7 +830,7 @@ export function Success({ order, onHome, settings }) {
 
 /* ══════ ORDERS PAGE ══════ */
 export function Orders({ orders, onBack, customer, waNumber, waName }) {
-  // orders sudah difilter per customer dari App.jsx (fetchMyOrders)
+  const [detail, setDetail] = useState(null);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("semua");
   const filtered = orders.filter(o=>{
@@ -859,7 +867,7 @@ export function Orders({ orders, onBack, customer, waNumber, waName }) {
       </div>
       {/* Tombol Chat WA */}
       {waNumber && (
-        <a href={`https://wa.me/${waNumber}?text=Halo%20${encodeURIComponent(waName||"Admin")}%2C%20saya%20ingin%20bertanya%20tentang%20pesanan%20saya.`}
+        <a href={`https://wa.me/${sanitizeWA(waNumber)}?text=Halo%20${encodeURIComponent(waName||"Admin")}%2C%20saya%20ingin%20bertanya%20tentang%20pesanan%20saya.`}
           target="_blank" rel="noreferrer"
           style={{display:"flex",alignItems:"center",justifyContent:"center",gap:9,background:"#22C55E",color:"#fff",borderRadius:12,padding:"12px 0",fontWeight:800,fontSize:14,marginBottom:16,textDecoration:"none",boxShadow:"0 4px 12px rgba(34,197,94,0.3)"}}>
           <span style={{fontSize:20}}>💬</span> Chat WhatsApp {waName||"Admin"}
@@ -885,8 +893,8 @@ export function Orders({ orders, onBack, customer, waNumber, waName }) {
                   </div>
                 </div>
                 <div style={{marginBottom:11,paddingBottom:11,borderBottom:"1px solid #F1F5F9"}}>
-                  {parseProducts(o.products).slice(0,2).map(p=>(
-                    <div key={p.id} style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                  {parseProducts(o.products).slice(0,2).map((p,i)=>(
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
                       <span style={{fontSize:13,color:"#64748B"}}>{p.name} ×{p.qty}</span>
                       <span style={{fontSize:13,fontWeight:700}}>{fmt(p.price*p.qty)}</span>
                     </div>
@@ -956,7 +964,7 @@ export function Orders({ orders, onBack, customer, waNumber, waName }) {
             </div>
 
             {waNumber&&(
-              <a href={`https://wa.me/${waNumber}?text=Halo%2C%20saya%20mau%20tanya%20pesanan%20${detail.order_id}`}
+              <a href={`https://wa.me/${sanitizeWA(waNumber)}?text=Halo%2C%20saya%20mau%20tanya%20pesanan%20${detail.order_id}`}
                 target="_blank" rel="noreferrer"
                 style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:"#22C55E",color:"#fff",borderRadius:12,padding:"13px 0",fontWeight:800,fontSize:14,textDecoration:"none",marginBottom:10}}>
                 💬 Tanya via WhatsApp
@@ -976,7 +984,7 @@ export function Orders({ orders, onBack, customer, waNumber, waName }) {
 export function WAFloatButton({ waNumber, waName }) {
   if (!waNumber) return null;
   return (
-    <a href={`https://wa.me/${waNumber}?text=Halo%20${encodeURIComponent(waName||"Admin")}%2C%20saya%20mau%20tanya%20tentang%20produk.`}
+    <a href={`https://wa.me/${sanitizeWA(waNumber)}?text=Halo%20${encodeURIComponent(waName||"Admin")}%2C%20saya%20mau%20tanya%20tentang%20produk.`}
       target="_blank" rel="noreferrer"
       title={"Chat " + (waName||"Admin")}
       style={{position:"fixed",bottom:82,left:14,width:46,height:46,borderRadius:"50%",background:"#22C55E",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,boxShadow:"0 4px 16px rgba(34,197,94,0.4)",zIndex:80,textDecoration:"none",animation:"pop .3s ease"}}>

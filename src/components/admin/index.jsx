@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { fetchOrders, updateOrderStatus, subscribeOrders, fetchStaff, saveStaff, deleteStaff, subscribeStaff, fetchCategories, saveCategory, deleteCategory, subscribeCategories, loginStaff } from "../../lib/db.js";
+import { fetchOrders, updateOrderStatus, subscribeOrders, fetchStaff, saveStaff, deleteStaff, subscribeStaff, fetchCategories, saveCategory, deleteCategory, subscribeCategories, loginStaff, fetchSettings, saveSettings, saveSetting, subscribeSettings } from "../../lib/db.js";
 import { supabase } from "../../lib/supabase.js";
 import { fmt, now } from "../../utils/index.js";
 import { useToast, ToastBox, StatCard, Modal, Confirm, Empty, Field, Spinner, StatusBadge } from "../ui/index.jsx";
@@ -270,7 +270,6 @@ function ProductsMgmt({ products, setProducts, toast, categories=["Minuman","Sna
     setSaving(true);
     const data={name:form.name,price:+form.price,stock:+form.stock,cat:form.cat,img:form.img,desc:form.desc,rating:edit?.rating||4.8,sold:edit?.sold||0};
     try {
-      const { supabase } = await import("../../lib/supabase.js");
       if(edit) {
         const {error} = await supabase.from("products").update(data).eq("id", edit.id);
         if(error) throw error;
@@ -291,7 +290,6 @@ function ProductsMgmt({ products, setProducts, toast, categories=["Minuman","Sna
 
   const del = async () => {
     try {
-      const { supabase } = await import("../../lib/supabase.js");
       const {error} = await supabase.from("products").delete().eq("id", delId);
       if(error) throw error;
       setProducts(p=>p.filter(x=>x.id!==delId));
@@ -307,7 +305,6 @@ function ProductsMgmt({ products, setProducts, toast, categories=["Minuman","Sna
     if(!stockAdd||isNaN(+stockAdd)||+stockAdd<=0) return;
     const newStock = (stockModal.stock||0) + (+stockAdd);
     try {
-      const { supabase } = await import("../../lib/supabase.js");
       const {error} = await supabase.from("products").update({stock: newStock}).eq("id", stockModal.id);
       if(error) throw error;
       setProducts(p=>p.map(x=>x.id===stockModal.id?{...x,stock:newStock}:x));
@@ -337,7 +334,7 @@ function ProductsMgmt({ products, setProducts, toast, categories=["Minuman","Sna
           <input className="inp" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari produk..." style={{paddingLeft:34}}/>
         </div>
         <select className="inp" value={catF} onChange={e=>setCatF(e.target.value)} style={{width:"auto",flexShrink:0}}>
-          {["Semua",...CATEGORIES.filter(c=>c!=="Semua")].map(c=><option key={c}>{c}</option>)}
+          {["Semua",...(categories||[]).filter(c=>c!=="Semua")].map(c=><option key={c}>{c}</option>)}
         </select>
       </div>
 
@@ -640,7 +637,6 @@ function Settings({ user, toast }) {
   useEffect(() => {
     async function load() {
       try {
-        const { fetchSettings } = await import("../../lib/db.js");
         const s = await fetchSettings();
         setWaNumber(s.wa_number||"");
         setWaName(s.wa_name||"");
@@ -678,7 +674,7 @@ function Settings({ user, toast }) {
   const saveWA = async () => {
     setSaving(true);
     try {
-      const { saveSettings } = await import("../../lib/db.js");
+      
       await saveSettings({ wa_number: waNumber, wa_name: waName });
       toast.add("Nomor WA berhasil disimpan ✅");
     } catch(e) { toast.add("Gagal simpan: "+e.message, "err"); }
@@ -688,7 +684,7 @@ function Settings({ user, toast }) {
   const saveQris = async () => {
     setSaving(true);
     try {
-      const { saveSetting } = await import("../../lib/db.js");
+      
       await saveSetting("qris_image", qrisImg);
       toast.add("QRIS berhasil disimpan ✅");
     } catch(e) { toast.add("Gagal simpan: "+e.message, "err"); }
@@ -698,7 +694,7 @@ function Settings({ user, toast }) {
   const saveBanks = async () => {
     setSaving(true);
     try {
-      const { saveSettings } = await import("../../lib/db.js");
+      
       const obj = {};
       BANKS.forEach(bk => {
         obj[`bank_${bk}`]      = banks[bk]?.number||"";
@@ -716,7 +712,7 @@ function Settings({ user, toast }) {
   const saveInfo = async () => {
     setSaving(true);
     try {
-      const { saveSettings } = await import("../../lib/db.js");
+      
       await saveSettings({ store_name: storeName, store_addr: storeAddr, store_hours: storeHours });
       toast.add("Informasi toko berhasil disimpan ✅");
     } catch(e) { toast.add("Gagal simpan: "+e.message, "err"); }
