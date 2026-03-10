@@ -4,6 +4,18 @@ import { supabase } from "../../lib/supabase.js";
 import { fmt, now } from "../../utils/index.js";
 import { useToast, ToastBox, StatCard, Modal, Confirm, Empty, Field, Spinner, StatusBadge } from "../ui/index.jsx";
 
+/* ══════ HELPERS ══════ */
+const parseProducts = (p) => {
+  if (!p) return [];
+  if (Array.isArray(p)) return p;
+  try { return JSON.parse(p); } catch { return []; }
+};
+const fmtDate = (d) => {
+  if (!d) return "-";
+  try { return new Date(d).toLocaleString("id-ID",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}); }
+  catch { return d; }
+};
+
 /* ══════ LOGIN PAGE ══════ */
 export function LoginPage({ onLogin }) {
   const [user, setUser]   = useState("");
@@ -86,12 +98,12 @@ export function LoginPage({ onLogin }) {
 }
 
 /* ══════ ADMIN SIDEBAR ══════ */
-function Sidebar({ active, setActive, user, onLogout, open, onClose }) {
+function Sidebar({ active, setActive, user, onLogout, open, onClose, pendingCount=0 }) {
   const menus = [
     {id:"dashboard",icon:"📊",label:"Dashboard"},
     {id:"products", icon:"📦",label:"Produk"},
+    {id:"orders",   icon:"🧾",label:"Pesanan", badge: pendingCount},
     {id:"staff",    icon:"👥",label:"Staff & Akun"},
-    {id:"orders",   icon:"🧾",label:"Pesanan"},
     {id:"settings", icon:"⚙️",label:"Pengaturan"},
   ];
   return (
@@ -120,10 +132,11 @@ function Sidebar({ active, setActive, user, onLogout, open, onClose }) {
         {/* Nav */}
         <nav style={{flex:1,padding:"14px 10px",overflowY:"auto"}}>
           {menus.map(m=>(
-            <button key={m.id} onClick={()=>{setActive(m.id);onClose?.();}} className={`sidebar-item ${active===m.id?"active":""}`}>
+            <button key={m.id} onClick={()=>{setActive(m.id);onClose?.();}} className={`sidebar-item ${active===m.id?"active":""}`} style={{position:"relative"}}>
               <span style={{fontSize:18}}>{m.icon}</span>
               {m.label}
-              {active===m.id && <div style={{marginLeft:"auto",width:5,height:5,borderRadius:"50%",background:"#fff"}}/>}
+              {m.badge>0 && <span style={{marginLeft:"auto",background:"#EF4444",color:"#fff",borderRadius:99,minWidth:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,padding:"0 4px"}}>{m.badge}</span>}
+              {active===m.id && !m.badge && <div style={{marginLeft:"auto",width:5,height:5,borderRadius:"50%",background:"#fff"}}/>}
             </button>
           ))}
         </nav>
@@ -470,12 +483,40 @@ function OrdersMgmt({ orders, setOrders, toast }) {
     }
   };
 
+  const exportCSV = () => {
+    const rows = [
+      ["Order ID","Nama","HP","Total","Metode","Status","Tanggal"],
+      ...[...orders].reverse().map(o=>[
+        o.order_id, o.customer_name, o.phone, o.total_price,
+        o.delivery_method, o.order_status, o.order_date
+      ])
+    ];
+    const csv = rows.map(r=>r.map(v=>`"${v||""}"`).join(",")).join("\n");
+    const blob = new Blob([csv],{type:"text/csv"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href=url; a.download=`pesanan-kiosrefres-${Date.now()}.csv`; a.click();
+    URL.revokeObjectURL(url);
+    toast.add("File CSV berhasil diunduh ✅");
+  };
+
+  const pendingCount = orders.filter(o=>o.order_status==="diproses").length;
+
   return (
     <div style={{padding:"20px 18px 40px"}}>
-      <div style={{marginBottom:18}}>
-        <h2 style={{fontWeight:900,fontSize:19}}>Manajemen Pesanan</h2>
-        <p style={{color:"#64748B",fontSize:13}}>{orders.length} total pesanan</p>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18,flexWrap:"wrap",gap:10}}>
+        <div>
+          <h2 style={{fontWeight:900,fontSize:19}}>Manajemen Pesanan</h2>
+          <p style={{color:"#64748B",fontSize:13}}>{orders.length} total · {pendingCount} menunggu diproses</p>
+        </div>
+        <button onClick={exportCSV} className="btn btn-secondary btn-sm">📥 Export CSV</button>
       </div>
+      {pendingCount>0&&(
+        <div style={{background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:11,padding:"9px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:18}}>⚠️</span>
+          <p style={{fontWeight:700,fontSize:13,color:"#92400E"}}>{pendingCount} pesanan menunggu diproses!</p>
+        </div>
+      )}
 
       <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
         <div style={{position:"relative",flex:1,minWidth:180}}>
@@ -549,8 +590,8 @@ function OrdersMgmt({ orders, setOrders, toast }) {
               )}
             </div>
             <p style={{fontWeight:800,fontSize:13,marginBottom:8}}>Produk Dipesan:</p>
-            {detail.products.map(p=>(
-              <div key={p.id} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid #F1F5F9"}}>
+            {parseProducts(detail.products).map((p,i)=>(
+              <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid #F1F5F9"}}>
                 <span style={{fontSize:13}}>{p.name} ×{p.qty}</span>
                 <span style={{fontWeight:800}}>{fmt(p.price*p.qty)}</span>
               </div>
@@ -978,12 +1019,20 @@ function StaffMgmt({ currentUser, toast }) {
     if(!profForm.name){ toast.add("Nama wajib diisi","err"); return; }
     setSaving(true);
     try{
+      const newPassword = profForm.password||currentUser.password;
       const upd = {id:currentUser.id, name:profForm.name, phone:profForm.phone,
-        password: profForm.password||currentUser.password,
-        username:currentUser.username, role:currentUser.role};
+        password: newPassword, username:currentUser.username, role:currentUser.role,
+        avatar: (profForm.name||currentUser.name).split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase()
+      };
       await saveStaff(upd);
-      toast.add("Profil berhasil diperbarui ✅");
+      // PENTING: Update session supaya login berikutnya pakai password baru
+      const updatedUser = {...currentUser, ...upd};
+      const ADMIN_SESSION = "kios_refres_admin";
+      localStorage.setItem(ADMIN_SESSION, JSON.stringify(updatedUser));
+      toast.add("Profil berhasil diperbarui ✅ " + (profForm.password?"Password baru aktif":""));
       setMyProfile(false);
+      // Reload page supaya session fresh
+      setTimeout(()=>window.location.reload(), 1200);
     }catch(e){ toast.add("Gagal: "+e.message,"err"); }
     setSaving(false);
   };
@@ -1117,7 +1166,7 @@ export function AdminApp({ user, onLogout, products, setProducts, dbError }) {
   return(
     <div className="admin-layout">
       <ToastBox list={toast.list} remove={toast.remove}/>
-      <Sidebar active={menu} setActive={setMenu} user={user} onLogout={onLogout} open={sOpen} onClose={()=>setSOpen(false)}/>
+      <Sidebar active={menu} setActive={setMenu} user={user} onLogout={onLogout} open={sOpen} onClose={()=>setSOpen(false)} pendingCount={orders.filter(o=>o.order_status==="diproses").length}/>
       <div className="admin-main">
         <Topbar title={titles[menu]||"Dashboard"} onMenu={()=>setSOpen(p=>!p)} user={user}/>
         <div style={{background:"#F0F4FF",minHeight:"calc(100vh - 56px)"}}>

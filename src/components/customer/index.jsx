@@ -4,6 +4,13 @@ import { CATEGORIES, CAT_ICON, ONGKIR } from "../../data/index.js";
 import { Skel, Stars, Empty, Field, Spinner, StatusBadge } from "../ui/index.jsx";
 
 /* ══════ SPLASH ══════ */
+/* ══════ HELPERS ══════ */
+const parseProducts = (p) => {
+  if (!p) return [];
+  if (Array.isArray(p)) return p;
+  try { return JSON.parse(p); } catch { return []; }
+};
+
 export function Splash({ onDone }) {
   const [p, setP] = useState(0);
   const [out, setOut] = useState(false);
@@ -816,16 +823,40 @@ export function Success({ order, onHome, settings }) {
 /* ══════ ORDERS PAGE ══════ */
 export function Orders({ orders, onBack, customer, waNumber, waName }) {
   // orders sudah difilter per customer dari App.jsx (fetchMyOrders)
+  const [search, setSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState("semua");
+  const filtered = orders.filter(o=>{
+    const matchSearch = !search || o.order_id.toLowerCase().includes(search.toLowerCase());
+    const matchStatus = filterStatus==="semua" || o.order_status===filterStatus;
+    return matchSearch && matchStatus;
+  });
+
   return (
     <div style={{maxWidth:680,margin:"0 auto",padding:"20px 16px 90px"}}>
       <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:"#2563EB",fontWeight:800,fontSize:13,marginBottom:16}}>← Kembali</button>
-      <h2 style={{fontWeight:900,marginBottom:18,fontSize:18}}>📦 Riwayat Pesanan</h2>
+      <h2 style={{fontWeight:900,marginBottom:4,fontSize:18}}>📦 Riwayat Pesanan</h2>
+      <p style={{color:"#94A3B8",fontSize:13,marginBottom:16}}>{orders.length} pesanan</p>
       {customer && (
         <div style={{background:"#EFF6FF",borderRadius:11,padding:"9px 13px",marginBottom:14,display:"flex",alignItems:"center",gap:7}}>
           <span style={{fontSize:14}}>👤</span>
           <p style={{fontSize:12,color:"#1D4ED8",fontWeight:700}}>Pesanan untuk: <strong>{customer.username}</strong></p>
         </div>
       )}
+      {/* Search & Filter */}
+      <div style={{marginBottom:14}}>
+        <input className="inp" value={search} onChange={e=>setSearch(e.target.value)}
+          placeholder="🔍 Cari Order ID..." style={{marginBottom:10}}/>
+        <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>
+          {["semua","diproses","dikirim","selesai","dibatalkan"].map(s=>(
+            <button key={s} onClick={()=>setFilterStatus(s)}
+              style={{padding:"5px 12px",borderRadius:99,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,whiteSpace:"nowrap",flexShrink:0,
+                background:filterStatus===s?"#2563EB":"#F1F5F9",
+                color:filterStatus===s?"#fff":"#64748B"}}>
+              {s==="semua"?"Semua":s.charAt(0).toUpperCase()+s.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
       {/* Tombol Chat WA */}
       {waNumber && (
         <a href={`https://wa.me/${waNumber}?text=Halo%20${encodeURIComponent(waName||"Admin")}%2C%20saya%20ingin%20bertanya%20tentang%20pesanan%20saya.`}
@@ -834,10 +865,10 @@ export function Orders({ orders, onBack, customer, waNumber, waName }) {
           <span style={{fontSize:20}}>💬</span> Chat WhatsApp {waName||"Admin"}
         </a>
       )}
-      {!orders.length
+      {!filtered.length
         ? <Empty icon="📦" title="Belum ada pesanan" desc="Pesanan Anda akan tampil di sini"/>
         : <div style={{display:"flex",flexDirection:"column",gap:11}}>
-            {[...orders].map(o=>(
+            {[...filtered].map(o=>(
               <div key={o.order_id} onClick={()=>setDetail(o)}
                 className="card anim-fadeUp"
                 style={{padding:17,cursor:"pointer",transition:"box-shadow .15s"}}
@@ -854,13 +885,13 @@ export function Orders({ orders, onBack, customer, waNumber, waName }) {
                   </div>
                 </div>
                 <div style={{marginBottom:11,paddingBottom:11,borderBottom:"1px solid #F1F5F9"}}>
-                  {o.products.slice(0,2).map(p=>(
+                  {parseProducts(o.products).slice(0,2).map(p=>(
                     <div key={p.id} style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
                       <span style={{fontSize:13,color:"#64748B"}}>{p.name} ×{p.qty}</span>
                       <span style={{fontSize:13,fontWeight:700}}>{fmt(p.price*p.qty)}</span>
                     </div>
                   ))}
-                  {o.products.length>2 && <p style={{fontSize:12,color:"#94A3B8"}}>+{o.products.length-2} produk lainnya...</p>}
+                  {parseProducts(o.products).length>2 && <p style={{fontSize:12,color:"#94A3B8"}}>+{parseProducts(o.products).length-2} produk lainnya...</p>}
                 </div>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <p style={{fontSize:12,color:"#64748B"}}>{o.delivery_method==="pickup"?"🏪 Ambil di Toko":"🚚 Delivery"} · {o.payment_method}</p>
@@ -894,7 +925,7 @@ export function Orders({ orders, onBack, customer, waNumber, waName }) {
             {/* Produk */}
             <div style={{background:"#F8FAFC",borderRadius:11,padding:"12px 14px",marginBottom:14}}>
               <p style={{fontSize:12,fontWeight:800,color:"#64748B",marginBottom:10}}>📦 PRODUK DIPESAN</p>
-              {detail.products.map((p,i)=>(
+              {parseProducts(detail.products).map((p,i)=>(
                 <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,paddingBottom:8,borderBottom:i<detail.products.length-1?"1px solid #F1F5F9":"none"}}>
                   <div>
                     <p style={{fontSize:13,fontWeight:700}}>{p.name}</p>
