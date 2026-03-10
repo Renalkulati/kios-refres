@@ -780,8 +780,8 @@ export function Success({ order, onHome, settings }) {
 
         {/* Produk */}
         <div style={{borderTop:"1px solid #F1F5F9",paddingTop:12,marginBottom:12}}>
-          {order.products.map(p=>(
-            <div key={p.id} style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+          {parseProducts(order.products).map((p,i)=>(
+            <div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
               <span style={{fontSize:12,color:"#64748B"}}>{p.name} ×{p.qty}</span>
               <span style={{fontSize:12,fontWeight:700}}>{fmt(p.price*p.qty)}</span>
             </div>
@@ -926,7 +926,7 @@ export function Orders({ orders, onBack, customer, waNumber, waName }) {
             <div style={{background:"#F8FAFC",borderRadius:11,padding:"12px 14px",marginBottom:14}}>
               <p style={{fontSize:12,fontWeight:800,color:"#64748B",marginBottom:10}}>📦 PRODUK DIPESAN</p>
               {parseProducts(detail.products).map((p,i)=>(
-                <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,paddingBottom:8,borderBottom:i<detail.products.length-1?"1px solid #F1F5F9":"none"}}>
+                <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,paddingBottom:8,borderBottom:"1px solid #F1F5F9"}}>
                   <div>
                     <p style={{fontSize:13,fontWeight:700}}>{p.name}</p>
                     <p style={{fontSize:12,color:"#94A3B8"}}>{fmt(p.price)} × {p.qty}</p>
