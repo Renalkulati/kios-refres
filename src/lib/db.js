@@ -257,10 +257,26 @@ export async function uploadProductImage(file) {
 }
 
 /* ══════ VOUCHER / PROMO ══════ */
+// Untuk customer checkout - hanya aktif
 export async function fetchVouchers() {
-  const { data, error } = await supabase.from("vouchers").select("*").eq("is_active", true);
+  const { data, error } = await supabase.from("vouchers").select("*").eq("is_active", true).order("created_at", { ascending: false });
   if (error) return [];
   return data || [];
+}
+
+// Untuk admin panel - semua voucher
+export async function fetchAllVouchers() {
+  const { data, error } = await supabase.from("vouchers").select("*").order("created_at", { ascending: false });
+  if (error) return [];
+  return data || [];
+}
+
+// Subscribe realtime perubahan voucher
+export function subscribeVouchers(onChange) {
+  const ch = "vouchers-" + Math.random().toString(36).slice(2,8);
+  return supabase.channel(ch)
+    .on("postgres_changes", { event: "*", schema: "public", table: "vouchers" }, onChange)
+    .subscribe();
 }
 
 export async function validateVoucher(code, subtotal) {
@@ -277,9 +293,15 @@ export async function validateVoucher(code, subtotal) {
 }
 
 export async function useVoucher(code) {
+  // Ambil used_count sekarang lalu increment manual (aman & tidak butuh RPC)
+  const { data } = await supabase.from("vouchers")
+    .select("id, used_count")
+    .eq("code", code.toUpperCase().trim())
+    .maybeSingle();
+  if (!data) return;
   await supabase.from("vouchers")
-    .update({ used_count: supabase.rpc("increment", { x: 1 }) })
-    .eq("code", code.toUpperCase().trim());
+    .update({ used_count: (data.used_count || 0) + 1 })
+    .eq("id", data.id);
 }
 
 export async function saveVoucher(v) {

@@ -7,7 +7,7 @@ import { PRODUCTS as FALLBACK } from "./data/index.js";
 import {
   fetchProducts, fetchOrders, fetchMyOrders, createOrder, decreaseStock,
   subscribeOrders, subscribeProducts, fetchSettings, subscribeSettings,
-  fetchCategories, subscribeCategories, updateOrderStatus
+  fetchCategories, subscribeCategories, updateOrderStatus, useVoucher
 } from "./lib/db.js";
 import { kirimStrukTelegram } from "./lib/telegram.js";
 
@@ -157,6 +157,10 @@ export default function App() {
       if (!dbError) {
         await createOrder(fullOrder);
         await decreaseStock(cart);
+        // Increment voucher used_count jika pakai voucher
+        if (fullOrder.voucher_code) {
+          useVoucher(fullOrder.voucher_code).catch(console.error);
+        }
         // Kirim struk ke Telegram
         kirimStrukTelegram(fullOrder).catch(console.error);
         // Refresh myOrders setelah berhasil

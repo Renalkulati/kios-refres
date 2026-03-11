@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { fetchOrders, updateOrderStatus, subscribeOrders, fetchStaff, saveStaff, deleteStaff, subscribeStaff, fetchCategories, saveCategory, deleteCategory, subscribeCategories, loginStaff, fetchSettings, saveSettings, saveSetting, subscribeSettings, uploadProductImage, fetchVouchers, saveVoucher, deleteVoucher } from "../../lib/db.js";
+import { fetchOrders, updateOrderStatus, subscribeOrders, fetchStaff, saveStaff, deleteStaff, subscribeStaff, fetchCategories, saveCategory, deleteCategory, subscribeCategories, loginStaff, fetchSettings, saveSettings, saveSetting, subscribeSettings, uploadProductImage, fetchAllVouchers, saveVoucher, deleteVoucher, subscribeVouchers } from "../../lib/db.js";
 import { supabase } from "../../lib/supabase.js";
 import { fmt, now } from "../../utils/index.js";
 import { useToast, ToastBox, StatCard, Modal, Confirm, Empty, Field, Spinner, StatusBadge } from "../ui/index.jsx";
@@ -1487,7 +1487,12 @@ function VoucherMgmt({ toast }) {
   const [form, setForm] = useState(emptyForm);
 
   useEffect(()=>{
-    fetchVouchers().then(setList).catch(()=>toast.add("Gagal load voucher","err")).finally(()=>setLoading(false));
+    fetchAllVouchers().then(setList).catch(()=>toast.add("Gagal load voucher","err")).finally(()=>setLoading(false));
+    // Realtime: auto-refresh saat ada perubahan voucher
+    const ch = subscribeVouchers(() => {
+      fetchAllVouchers().then(setList).catch(console.error);
+    });
+    return () => ch.unsubscribe();
   },[]);
 
   const open = (v=null) => {
@@ -1511,7 +1516,7 @@ function VoucherMgmt({ toast }) {
       };
       if(edit) payload.id = edit.id;
       await saveVoucher(payload);
-      await fetchVouchers().then(setList);
+      await fetchAllVouchers().then(setList);
       toast.add(edit?"Voucher diperbarui ✅":"Voucher berhasil dibuat ✅");
       setModal(false);
     } catch(e) { toast.add("Gagal: "+e.message,"err"); }
