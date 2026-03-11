@@ -223,7 +223,7 @@ function Dashboard({ products, orders }) {
             {top5.map((p,i)=>(
               <div key={p.id} style={{display:"flex",alignItems:"center",gap:13,padding:"10px 18px",borderBottom:i<4?"1px solid #F1F5F9":"none"}}>
                 <span style={{width:22,fontWeight:900,color:"#94A3B8",fontSize:13}}>#{i+1}</span>
-                <img src={p.img} alt={p.name} style={{width:42,height:42,objectFit:"cover",borderRadius:10,flexShrink:0}}/>
+                <img src={p.img} alt={p.name} style={{width:42,height:42,objectFit:"cover",borderRadius:10,flexShrink:0}} onError={e=>{e.target.src="https://via.placeholder.com/42x42/EFF6FF/2563EB?text=📦";}}/>
                 <div style={{flex:1,minWidth:0}}>
                   <p style={{fontWeight:800,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</p>
                   <p style={{fontSize:11,color:"#64748B"}}>{p.sold} terjual</p>
@@ -252,8 +252,9 @@ function ProductsMgmt({ products, setProducts, toast, categories=["Minuman","Sna
   const [errs,    setErrs]    = useState({});
   const [saving,  setSaving]  = useState(false);
   // State tambah stok cepat
-  const [stockModal, setStockModal] = useState(null); // product object
-  const [stockAdd,   setStockAdd]   = useState("");
+  const [stockModal,   setStockModal]   = useState(null);
+  const [stockAdd,     setStockAdd]     = useState("");
+  const [uploadingImg, setUploadingImg] = useState(false);
 
   const filtered = products.filter(p=>(catF==="Semua"||p.cat===catF)&&p.name.toLowerCase().includes(search.toLowerCase()));
 
@@ -352,7 +353,7 @@ function ProductsMgmt({ products, setProducts, toast, categories=["Minuman","Sna
                   <tr key={p.id}>
                     <td>
                       <div style={{display:"flex",alignItems:"center",gap:11,minWidth:150}}>
-                        <img src={p.img} alt={p.name} style={{width:42,height:42,objectFit:"cover",borderRadius:9,flexShrink:0}}/>
+                        <img src={p.img} alt={p.name} style={{width:42,height:42,objectFit:"cover",borderRadius:9,flexShrink:0}} onError={e=>{e.target.src="https://via.placeholder.com/42x42/EFF6FF/2563EB?text=📦";}}/>
                         <p style={{fontWeight:800,fontSize:13,lineHeight:1.3}}>{p.name}</p>
                       </div>
                     </td>
