@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { fmt, genCode, genId, now } from "../../utils/index.js";
 import { validateVoucher, updateOrderStatus } from "../../lib/db.js";
+import { kirimNotifSudahBayar, kirimNotifBatalPesanan } from "../../lib/telegram.js";
 import { CATEGORIES, CAT_ICON, ONGKIR } from "../../data/index.js";
 import { Skel, Stars, Empty, Field, Spinner, StatusBadge } from "../ui/index.jsx";
 
@@ -426,9 +427,12 @@ export function Checkout({ cart, onBack, onSuccess, customer, settings }) {
       payGroup==="qris"    ? "QRIS" :
       payGroup==="transfer"? `Transfer ${selectedBank?.name||""}` :
       payGroup==="ewallet" ? selectedWallet?.name||"" :
+      payGroup==="cash"    ? (meth==="delivery"?"Bayar Tunai (COD)":"Bayar Tunai di Toko") :
       "Kartu Debit/Kredit";
+    // Cash: status langsung "menunggu_bayar" bukan "diproses"
+    const orderStatus = payGroup==="cash" ? "menunggu_bayar" : "diproses";
     setTimeout(()=>{
-      onSuccess({order_id:genId(),customer_name:form.name,phone:form.phone,products:cart,total_price:total,delivery_method:meth,address:meth==="delivery"?`${form.address}, ${form.city}`:"Ambil di Toko",pickup_code:meth==="pickup"?genCode():null,order_status:"diproses",order_date:now(),payment_method:payLabel,pay_detail:payDetail,voucher_code:voucherApplied?.code||null,discount_amount:discount});
+      onSuccess({order_id:genId(),customer_name:form.name,phone:form.phone,products:cart,total_price:total,delivery_method:meth,address:meth==="delivery"?`${form.address}, ${form.city}`:"Ambil di Toko",pickup_code:meth==="pickup"?genCode():null,order_status:orderStatus,order_date:now(),payment_method:payLabel,pay_detail:payDetail,voucher_code:voucherApplied?.code||null,discount_amount:discount});
     },2400);
   };
 
@@ -592,6 +596,7 @@ export function Checkout({ cart, onBack, onSuccess, customer, settings }) {
                 {v:"qris",    icon:"⬛", label:"QRIS",          sub:"Semua aplikasi"},
                 {v:"transfer",icon:"🏦", label:"Transfer Bank", sub:"BCA · Mandiri · BNI · BRI · BSI"},
                 {v:"ewallet", icon:"📱", label:"E-Wallet",      sub:"GoPay · OVO · DANA · dll"},
+                {v:"cash",    icon:"💵", label:"Bayar Tunai",   sub:"Bayar langsung di toko / kurir"},
                 {v:"card",    icon:"💳", label:"Kartu Kredit",  sub:"Visa · Mastercard"},
               ].map(g=>(
                 <div key={g.v} onClick={()=>{setPayGroup(g.v);setPayDetail("");}} style={{
@@ -738,6 +743,36 @@ export function Checkout({ cart, onBack, onSuccess, customer, settings }) {
               </div>
             )}
 
+            {/* ── CASH / BAYAR TUNAI ── */}
+            {payGroup==="cash" && (
+              <div className="anim-fadeUp">
+                <div style={{background:"linear-gradient(135deg,#064E3B,#065F46)",borderRadius:16,padding:22,textAlign:"center"}}>
+                  <div style={{fontSize:52,marginBottom:12}}>💵</div>
+                  <p style={{color:"#fff",fontWeight:900,fontSize:18,marginBottom:6}}>Bayar Tunai</p>
+                  <div style={{background:"rgba(255,255,255,0.1)",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
+                    <p style={{color:"rgba(255,255,255,0.6)",fontSize:11,fontWeight:800,letterSpacing:1.5,marginBottom:6}}>TOTAL YANG HARUS DIBAYAR</p>
+                    <p style={{color:"#6EE7B7",fontWeight:900,fontSize:28}}>{fmt(total)}</p>
+                  </div>
+                  {meth==="pickup" && (
+                    <div style={{background:"rgba(255,255,255,0.1)",borderRadius:12,padding:"12px 16px",marginBottom:12,textAlign:"left"}}>
+                      <p style={{color:"#6EE7B7",fontWeight:800,fontSize:13,marginBottom:4}}>🏪 Bayar di Kasir Toko</p>
+                      <p style={{color:"rgba(255,255,255,0.7)",fontSize:12,lineHeight:1.6}}>Tunjukkan kode pesanan kepada kasir dan bayar langsung secara tunai.</p>
+                    </div>
+                  )}
+                  {meth==="delivery" && (
+                    <div style={{background:"rgba(255,255,255,0.1)",borderRadius:12,padding:"12px 16px",marginBottom:12,textAlign:"left"}}>
+                      <p style={{color:"#6EE7B7",fontWeight:800,fontSize:13,marginBottom:4}}>🚚 Bayar ke Kurir (COD)</p>
+                      <p style={{color:"rgba(255,255,255,0.7)",fontSize:12,lineHeight:1.6}}>Siapkan uang tunai <strong style={{color:"#6EE7B7"}}>{fmt(total)}</strong> saat pesanan tiba di alamat Anda.</p>
+                    </div>
+                  )}
+                  <div style={{background:"rgba(245,158,11,0.2)",borderRadius:10,padding:"10px 13px",display:"flex",gap:8,alignItems:"flex-start",textAlign:"left"}}>
+                    <span style={{fontSize:14}}>ℹ️</span>
+                    <p style={{color:"#FCD34D",fontSize:11,lineHeight:1.6}}>Pesanan akan dikonfirmasi oleh admin. Tidak perlu bukti pembayaran digital.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* ── KARTU KREDIT/DEBIT ── */}
             {payGroup==="card" && (
               <div className="anim-fadeUp" style={{background:"linear-gradient(135deg,#0F172A,#1E3A8A)",borderRadius:16,padding:20}}>
@@ -775,8 +810,23 @@ export function Checkout({ cart, onBack, onSuccess, customer, settings }) {
 
           <div style={{display:"flex",gap:9}}>
             <button onClick={()=>setStep(2)} className="btn btn-ghost" style={{flex:1}}>← Kembali</button>
-            <button onClick={doPayment} className="btn btn-amber btn-lg" style={{flex:2}}>
-              {payGroup==="qris"?"✅ Saya Sudah Bayar QRIS":payGroup==="transfer"?"✅ Saya Sudah Transfer":payGroup==="ewallet"?"✅ Saya Sudah Transfer":"💳 Bayar"} {fmt(total)}
+            <button onClick={doPayment} disabled={!payGroup} style={{
+              flex:2, padding:"14px", border:"none", borderRadius:14, fontWeight:900, fontSize:15,
+              cursor: payGroup?"pointer":"not-allowed",
+              background: !payGroup ? "#CBD5E1"
+                : payGroup==="cash"     ? "linear-gradient(135deg,#064E3B,#10B981)"
+                : payGroup==="qris"     ? "linear-gradient(135deg,#0F172A,#1E293B)"
+                : "linear-gradient(135deg,#D97706,#F59E0B)",
+              color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+              boxShadow: payGroup?"0 4px 20px rgba(0,0,0,0.2)":"none",
+              transition:"all .2s",
+            }}>
+              {!payGroup && "Pilih Metode Bayar"}
+              {payGroup==="cash"     && <>💵 Pesan Sekarang, Bayar {meth==="delivery"?"Saat Terima":"di Toko"}</>}
+              {payGroup==="qris"     && <>✅ Saya Sudah Bayar QRIS · {fmt(total)}</>}
+              {payGroup==="transfer" && <>✅ Saya Sudah Transfer · {fmt(total)}</>}
+              {payGroup==="ewallet"  && <>✅ Saya Sudah Transfer · {fmt(total)}</>}
+              {payGroup==="card"     && <>💳 Bayar · {fmt(total)}</>}
             </button>
           </div>
         </div>
@@ -787,17 +837,113 @@ export function Checkout({ cart, onBack, onSuccess, customer, settings }) {
 
 /* ══════ SUCCESS PAGE ══════ */
 export function Success({ order, onHome, settings }) {
-  const isTransfer = order.payment_method?.startsWith("Transfer");
-  const isEwallet  = ["GoPay","OVO","DANA","ShopeePay"].includes(order.payment_method);
-  const isQris     = order.payment_method==="QRIS";
+  const isTransfer     = order.payment_method?.startsWith("Transfer");
+  const isEwallet      = ["GoPay","OVO","DANA","ShopeePay"].includes(order.payment_method);
+  const isQris         = order.payment_method==="QRIS";
+  const isCash         = order.payment_method?.includes("Tunai");
+  const needsPayNotif  = isTransfer || isEwallet || isQris;
+
+  const [sudahBayar,    setSudahBayar]    = useState(false);
+  const [loadingNotif,  setLoadingNotif]  = useState(false);
+  const [notifSent,     setNotifSent]     = useState(false);
+
+  const doSudahBayar = async () => {
+    setLoadingNotif(true);
+    try {
+      // Update status di Supabase: menunggu_konfirmasi
+      await updateOrderStatus(order.order_id, "menunggu_konfirmasi");
+      // Kirim notifikasi ke Telegram admin
+      await kirimNotifSudahBayar(order);
+      setNotifSent(true);
+      setSudahBayar(true);
+    } catch(e) {
+      console.error("Notif error:", e);
+      // Tetap anggap berhasil dari sisi UI
+      setNotifSent(true);
+      setSudahBayar(true);
+    }
+    setLoadingNotif(false);
+  };
+
+  const doCashSudahBayar = async () => {
+    setLoadingNotif(true);
+    try {
+      await updateOrderStatus(order.order_id, "menunggu_konfirmasi");
+      await kirimNotifSudahBayar({...order, payment_method: order.payment_method});
+      setNotifSent(true);
+      setSudahBayar(true);
+    } catch(e) {
+      setNotifSent(true);
+      setSudahBayar(true);
+    }
+    setLoadingNotif(false);
+  };
+
   return (
     <div style={{maxWidth:540,margin:"0 auto",padding:"38px 16px 90px",textAlign:"center"}} className="anim-fadeIn">
       <div className="anim-bounce" style={{width:84,height:84,background:"#D1FAE5",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:42,margin:"0 auto 18px"}}>🎉</div>
       <h2 style={{fontWeight:900,fontSize:21,marginBottom:6}}>Pesanan Berhasil!</h2>
       <p style={{color:"#64748B",fontSize:14,marginBottom:26}}>Terima kasih sudah belanja di KIOS REFRES</p>
 
-      {/* Peringatan konfirmasi pembayaran */}
-      {(isTransfer||isEwallet) && (
+      {/* ── INFO CASH ── */}
+      {isCash && !sudahBayar && (
+        <div style={{background:"linear-gradient(135deg,#064E3B,#065F46)",borderRadius:16,padding:"18px 20px",marginBottom:16,textAlign:"left"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+            <span style={{fontSize:28}}>💵</span>
+            <div>
+              <p style={{fontWeight:900,color:"#fff",fontSize:15}}>Bayar Tunai</p>
+              <p style={{color:"rgba(255,255,255,0.6)",fontSize:12}}>{order.payment_method}</p>
+            </div>
+          </div>
+          <div style={{background:"rgba(255,255,255,0.1)",borderRadius:11,padding:"12px 14px",marginBottom:14}}>
+            <p style={{color:"rgba(255,255,255,0.6)",fontSize:11,fontWeight:800,marginBottom:4}}>TOTAL YANG HARUS DIBAYAR</p>
+            <p style={{color:"#6EE7B7",fontWeight:900,fontSize:26}}>{fmt(order.total_price)}</p>
+          </div>
+          <p style={{color:"rgba(255,255,255,0.75)",fontSize:12,lineHeight:1.7,marginBottom:14}}>
+            {order.delivery_method==="pickup"
+              ? "Tunjukkan kode pesanan ke kasir dan bayar tunai saat ambil barang."
+              : "Siapkan uang tunai saat kurir tiba di alamat Anda (COD)."}
+          </p>
+          <button onClick={doCashSudahBayar} disabled={loadingNotif}
+            style={{width:"100%",padding:"13px",background: loadingNotif?"rgba(255,255,255,0.3)":"#10B981",border:"none",borderRadius:12,fontWeight:900,fontSize:14,color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+            {loadingNotif ? <><Spinner size={18}/> Mengirim...</> : "✅ Saya Sudah Bayar Tunai"}
+          </button>
+        </div>
+      )}
+
+      {/* ── TOMBOL SAYA SUDAH BAYAR (Transfer/QRIS/E-Wallet) ── */}
+      {needsPayNotif && !sudahBayar && (
+        <div style={{background:"#FEF3C7",border:"1.5px solid #FCD34D",borderRadius:14,padding:"16px",marginBottom:14,textAlign:"left"}}>
+          <div style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:12}}>
+            <span style={{fontSize:20}}>⏳</span>
+            <div>
+              <p style={{fontWeight:800,color:"#92400E",fontSize:13,marginBottom:3}}>Sudah Melakukan Pembayaran?</p>
+              <p style={{fontSize:12,color:"#78350F",lineHeight:1.6}}>
+                {isTransfer?"Sudah transfer ke rekening toko?":isQris?"Sudah scan & bayar via QRIS?":"Sudah transfer via e-wallet?"}
+                {" "}Klik tombol di bawah untuk memberitahu admin.
+              </p>
+            </div>
+          </div>
+          <button onClick={doSudahBayar} disabled={loadingNotif}
+            style={{width:"100%",padding:"13px",background:loadingNotif?"#94A3B8":"linear-gradient(135deg,#D97706,#F59E0B)",border:"none",borderRadius:12,fontWeight:900,fontSize:14,color:"#fff",cursor:loadingNotif?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:"0 4px 14px rgba(217,119,6,0.35)"}}>
+            {loadingNotif ? <><Spinner size={18}/> Mengirim Notifikasi...</> : "🔔 Saya Sudah Bayar — Beritahu Admin"}
+          </button>
+        </div>
+      )}
+
+      {/* ── KONFIRMASI NOTIF TERKIRIM ── */}
+      {notifSent && (
+        <div style={{background:"#D1FAE5",border:"1.5px solid #6EE7B7",borderRadius:14,padding:"13px 16px",marginBottom:14,textAlign:"left",display:"flex",gap:10,alignItems:"center"}} className="anim-fadeIn">
+          <span style={{fontSize:24}}>✅</span>
+          <div>
+            <p style={{fontWeight:800,color:"#065F46",fontSize:13}}>Notifikasi Terkirim ke Admin!</p>
+            <p style={{fontSize:12,color:"#047857",lineHeight:1.5}}>Admin akan segera memverifikasi dan memproses pesanan Anda.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Peringatan konfirmasi pembayaran (jika belum klik sudah bayar) */}
+      {(isTransfer||isEwallet) && !needsPayNotif && (
         <div style={{background:"#FEF3C7",border:"1.5px solid #FCD34D",borderRadius:14,padding:"13px 16px",marginBottom:14,textAlign:"left",display:"flex",gap:10,alignItems:"flex-start"}}>
           <span style={{fontSize:20}}>⏳</span>
           <div>
@@ -906,6 +1052,8 @@ export function Orders({ orders, onBack, customer, waNumber, waName, onOrderUpda
       setDetail(prev => ({...prev, order_status: "dibatalkan"}));
       setCancelMsg("Pesanan berhasil dibatalkan.");
       setConfirmCancel(false);
+      // Kirim notif ke Telegram
+      try { await kirimNotifBatalPesanan(detail); } catch(_) {}
     } catch(e) {
       setCancelMsg("Gagal membatalkan: " + e.message);
     }

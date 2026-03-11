@@ -103,7 +103,7 @@ function Sidebar({ active, setActive, user, onLogout, open, onClose, pendingCoun
     {id:"dashboard",  icon:"📊",label:"Dashboard"},
     {id:"products",   icon:"📦",label:"Produk"},
     {id:"categories", icon:"🏷️",label:"Kategori"},
-    {id:"orders",     icon:"🧾",label:"Pesanan", badge: pendingCount},
+    {id:"orders",     icon:"🧾",label:"Pesanan", badge: pendingCount, konfirmasi: konfirmasiCount},
     {id:"vouchers",   icon:"🎟️",label:"Voucher & Promo"},
     {id:"laporan",    icon:"📈",label:"Laporan"},
     {id:"staff",      icon:"👥",label:"Staff & Akun"},
@@ -506,7 +506,8 @@ function OrdersMgmt({ orders, setOrders, toast }) {
     toast.add("File CSV berhasil diunduh ✅");
   };
 
-  const pendingCount = orders.filter(o=>o.order_status==="diproses").length;
+  const pendingCount   = orders.filter(o=>["diproses","menunggu_konfirmasi","menunggu_bayar"].includes(o.order_status)).length;
+  const konfirmasiCount = orders.filter(o=>o.order_status==="menunggu_konfirmasi").length;
 
   return (
     <div style={{padding:"20px 18px 40px"}}>
@@ -517,10 +518,43 @@ function OrdersMgmt({ orders, setOrders, toast }) {
         </div>
         <button onClick={exportCSV} className="btn btn-secondary btn-sm">📥 Export CSV</button>
       </div>
-      {pendingCount>0&&(
-        <div style={{background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:11,padding:"9px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
+      {/* Banner: Sudah Bayar - butuh konfirmasi */}
+      {orders.filter(o=>o.order_status==="menunggu_konfirmasi").length > 0 && (
+        <div style={{background:"linear-gradient(135deg,#4C1D95,#6D28D9)",borderRadius:14,padding:"14px 18px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{width:38,height:38,background:"rgba(255,255,255,0.15)",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>🔔</div>
+            <div>
+              <p style={{color:"#fff",fontWeight:900,fontSize:14}}>{orders.filter(o=>o.order_status==="menunggu_konfirmasi").length} Pembeli Klaim Sudah Bayar</p>
+              <p style={{color:"rgba(255,255,255,0.7)",fontSize:12}}>Cek bukti transfer lalu konfirmasi pesanan</p>
+            </div>
+          </div>
+          <button onClick={()=>setFilter("menunggu_konfirmasi")} style={{background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:9,padding:"7px 16px",color:"#fff",fontWeight:800,fontSize:12,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>
+            Lihat →
+          </button>
+        </div>
+      )}
+
+      {/* Banner: Cash/COD menunggu bayar */}
+      {orders.filter(o=>o.order_status==="menunggu_bayar").length > 0 && (
+        <div style={{background:"linear-gradient(135deg,#064E3B,#065F46)",borderRadius:14,padding:"14px 18px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{width:38,height:38,background:"rgba(255,255,255,0.15)",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>💵</div>
+            <div>
+              <p style={{color:"#fff",fontWeight:900,fontSize:14}}>{orders.filter(o=>o.order_status==="menunggu_bayar").length} Pesanan Cash / COD</p>
+              <p style={{color:"rgba(255,255,255,0.7)",fontSize:12}}>Pembeli bayar tunai saat terima / di kasir</p>
+            </div>
+          </div>
+          <button onClick={()=>setFilter("menunggu_bayar")} style={{background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:9,padding:"7px 16px",color:"#fff",fontWeight:800,fontSize:12,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>
+            Lihat →
+          </button>
+        </div>
+      )}
+
+      {/* Banner kuning: pesanan diproses biasa */}
+      {orders.filter(o=>o.order_status==="diproses").length > 0 && (
+        <div style={{background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:11,padding:"9px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:18}}>⚠️</span>
-          <p style={{fontWeight:700,fontSize:13,color:"#92400E"}}>{pendingCount} pesanan menunggu diproses!</p>
+          <p style={{fontWeight:700,fontSize:13,color:"#92400E"}}>{orders.filter(o=>o.order_status==="diproses").length} pesanan baru menunggu diproses!</p>
         </div>
       )}
 
@@ -530,7 +564,7 @@ function OrdersMgmt({ orders, setOrders, toast }) {
           <input className="inp" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari Order ID / Nama..." style={{paddingLeft:34}}/>
         </div>
         <div className="noscroll" style={{display:"flex",gap:6,overflowX:"auto"}}>
-          {["semua","diproses","dikirim","selesai","dibatalkan"].map(s=>(
+          {["semua","menunggu_konfirmasi","menunggu_bayar","diproses","dikirim","selesai","dibatalkan"].map(s=>(
             <button key={s} onClick={()=>setFilter(s)} className="btn btn-sm" style={{background:filter===s?"#2563EB":"#fff",color:filter===s?"#fff":"#64748B",border:`1.5px solid ${filter===s?"#2563EB":"#E2E8F4"}`,textTransform:"capitalize",flexShrink:0}}>
               {s}
             </button>
@@ -566,7 +600,7 @@ function OrdersMgmt({ orders, setOrders, toast }) {
                       <td><StatusBadge status={o.order_status}/></td>
                       <td>
                         <select value={o.order_status} onChange={e=>updateStatus(o.order_id,e.target.value)} className="inp" style={{width:"auto",padding:"5px 8px",fontSize:12,cursor:"pointer"}}>
-                          {["diproses","dikirim","selesai","dibatalkan"].map(s=><option key={s}>{s}</option>)}
+                          {["diproses","menunggu_bayar","menunggu_konfirmasi","dikirim","selesai","dibatalkan"].map(s=><option key={s}>{s}</option>)}
                         </select>
                       </td>
                     </tr>
@@ -609,7 +643,7 @@ function OrdersMgmt({ orders, setOrders, toast }) {
             <div style={{marginTop:15}}>
               <p style={{fontSize:12,fontWeight:700,color:"#64748B",marginBottom:6}}>Update Status:</p>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                {["diproses","dikirim","selesai","dibatalkan"].map(s=>(
+                {["diproses","menunggu_bayar","menunggu_konfirmasi","dikirim","selesai","dibatalkan"].map(s=>(
                   <button key={s} onClick={()=>updateStatus(detail.order_id,s)} className="btn btn-sm" style={{background:detail.order_status===s?"#2563EB":"#fff",color:detail.order_status===s?"#fff":"#64748B",border:`1.5px solid ${detail.order_status===s?"#2563EB":"#E2E8F4"}`,textTransform:"capitalize"}}>
                     {s}
                   </button>

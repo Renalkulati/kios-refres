@@ -123,7 +123,14 @@ export function StatCard({ icon, label, value, sub, color="#2563EB", bg="#EFF6FF
 
 /* ── ORDER STATUS BADGE ── */
 export function StatusBadge({ status }) {
-  const map = {diproses:{c:"b-amber",i:"🟡"},dikirim:{c:"b-blue",i:"🔵"},selesai:{c:"b-green",i:"🟢"},dibatalkan:{c:"b-red",i:"🔴"}};
+  const map = {
+    diproses:            {c:"b-amber", i:"🟡", label:"Diproses"},
+    menunggu_bayar:      {c:"b-orange", i:"💵", label:"Menunggu Bayar"},
+    menunggu_konfirmasi: {c:"b-purple", i:"🔔", label:"Menunggu Konfirmasi"},
+    dikirim:             {c:"b-blue",   i:"🔵", label:"Dikirim"},
+    selesai:             {c:"b-green",  i:"🟢", label:"Selesai"},
+    dibatalkan:          {c:"b-red",    i:"🔴", label:"Dibatalkan"},
+  };
   const s = map[status] || map.diproses;
-  return <span className={`badge ${s.c}`}>{s.i} {status}</span>;
+  return <span className={`badge ${s.c}`}>{s.i} {s.label || status}</span>;
 }
