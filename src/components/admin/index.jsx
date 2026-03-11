@@ -103,7 +103,7 @@ function Sidebar({ active, setActive, user, onLogout, open, onClose, pendingCoun
     {id:"dashboard",  icon:"📊",label:"Dashboard"},
     {id:"products",   icon:"📦",label:"Produk"},
     {id:"categories", icon:"🏷️",label:"Kategori"},
-    {id:"orders",     icon:"🧾",label:"Pesanan", badge: pendingCount, konfirmasi: konfirmasiCount},
+    {id:"orders",     icon:"🧾",label:"Pesanan", badge: pendingCount},
     {id:"vouchers",   icon:"🎟️",label:"Voucher & Promo"},
     {id:"laporan",    icon:"📈",label:"Laporan"},
     {id:"staff",      icon:"👥",label:"Staff & Akun"},
