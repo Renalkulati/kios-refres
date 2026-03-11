@@ -256,7 +256,14 @@ function ProductsMgmt({ products, setProducts, toast, categories=["Minuman","Sna
   const [stockAdd,     setStockAdd]     = useState("");
   const [uploadingImg, setUploadingImg] = useState(false);
 
-  const filtered = products.filter(p=>(catF==="Semua"||p.cat===catF)&&p.name.toLowerCase().includes(search.toLowerCase()));
+  const filtered = products.filter(p=>{
+    if(catF!=="Semua"&&p.cat!==catF) return false;
+    if(!p.name.toLowerCase().includes(search.toLowerCase())) return false;
+    if(stockF==="habis"&&p.stock!==0) return false;
+    if(stockF==="hampir"&&!(p.stock>0&&p.stock<10)) return false;
+    if(stockF==="aman"&&p.stock<10) return false;
+    return true;
+  });
 
   const openAdd  = () => { setEdit(null); setForm({name:"",price:"",desc:"",img:"",stock:"",cat:"Minuman"}); setErrs({}); setModal(true); };
   const openEdit = p  => { setEdit(p); setForm({name:p.name,price:String(p.price),desc:p.desc||"",img:p.img||"",stock:String(p.stock),cat:p.cat||"Minuman"}); setErrs({}); setModal(true); };
@@ -326,7 +333,11 @@ function ProductsMgmt({ products, setProducts, toast, categories=["Minuman","Sna
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18,flexWrap:"wrap",gap:10}}>
         <div>
           <h2 style={{fontWeight:900,fontSize:19}}>Manajemen Produk</h2>
-          <p style={{color:"#64748B",fontSize:13}}>{products.length} produk tersedia</p>
+          <p style={{color:"#64748B",fontSize:13}}>
+            {products.length} produk
+            {products.filter(p=>p.stock===0).length>0&&<span style={{color:"#EF4444",fontWeight:700,marginLeft:8}}>· {products.filter(p=>p.stock===0).length} habis stok</span>}
+            {products.filter(p=>p.stock>0&&p.stock<10).length>0&&<span style={{color:"#F59E0B",fontWeight:700,marginLeft:8}}>· {products.filter(p=>p.stock>0&&p.stock<10).length} hampir habis</span>}
+          </p>
         </div>
         <button onClick={openAdd} className="btn btn-primary">+ Tambah Produk</button>
       </div>
@@ -339,6 +350,12 @@ function ProductsMgmt({ products, setProducts, toast, categories=["Minuman","Sna
         </div>
         <select className="inp" value={catF} onChange={e=>setCatF(e.target.value)} style={{width:"auto",flexShrink:0}}>
           {["Semua",...(categories||[]).filter(c=>c!=="Semua")].map(c=><option key={c}>{c}</option>)}
+        </select>
+        <select className="inp" value={stockF||"semua"} onChange={e=>setStockF(e.target.value==="semua"?null:e.target.value)} style={{width:"auto",flexShrink:0}}>
+          <option value="semua">Semua Stok</option>
+          <option value="habis">❌ Habis Stok</option>
+          <option value="hampir">⚠️ Hampir Habis</option>
+          <option value="aman">✅ Stok Aman</option>
         </select>
       </div>
 
@@ -359,7 +376,15 @@ function ProductsMgmt({ products, setProducts, toast, categories=["Minuman","Sna
                     </td>
                     <td><span className="badge b-blue">{p.cat}</span></td>
                     <td style={{fontWeight:900,color:"#2563EB"}}>{fmt(p.price)}</td>
-                    <td><span className={`badge ${p.stock<10?"b-amber":p.stock===0?"b-red":"b-green"}`}>{p.stock}</span></td>
+                    <td>
+                      <div style={{display:"flex",flexDirection:"column",gap:3,alignItems:"flex-start"}}>
+                        <span className={`badge ${p.stock===0?"b-red":p.stock<10?"b-amber":"b-green"}`}>
+                          {p.stock===0?"❌ HABIS":`${p.stock} unit`}
+                        </span>
+                        {p.stock===0&&<span style={{fontSize:10,color:"#EF4444",fontWeight:700}}>Perlu restock!</span>}
+                        {p.stock>0&&p.stock<10&&<span style={{fontSize:10,color:"#F59E0B",fontWeight:700}}>Hampir habis</span>}
+                      </div>
+                    </td>
                     <td style={{fontWeight:700}}>{p.sold}</td>
                     <td style={{fontWeight:700}}>⭐ {p.rating}</td>
                     <td>
@@ -675,7 +700,11 @@ function Settings({ user, toast }) {
   const [ewallets,  setEwallets]  = useState({});
   const [storeName, setStoreName] = useState("KIOS REFRES");
   const [storeAddr, setStoreAddr] = useState("Jl. Raya Contoh No. 88, Jakarta Selatan");
-  const [storeHours,setStoreHours]= useState("07.00 - 21.00 WIB");
+  const [storeHours,   setStoreHours]   = useState("07.00 - 21.00 WIB");
+  const [storeTagline, setStoreTagline] = useState("Belanja Mudah · Harga Bersahabat");
+  const [storeTheme,   setStoreTheme]   = useState("blue");
+  const [themePrimary, setThemePrimary] = useState("#2563EB");
+  const [themeSecondary,setThemeSecondary] = useState("#1E3A8A");
 
   useEffect(() => {
     async function load() {
@@ -688,6 +717,10 @@ function Settings({ user, toast }) {
         setStoreName(s.store_name||"KIOS REFRES");
         setStoreAddr(s.store_addr||"Jl. Raya Contoh No. 88, Jakarta Selatan");
         setStoreHours(s.store_hours||"07.00 - 21.00 WIB");
+        setStoreTagline(s.store_tagline||"Belanja Mudah · Harga Bersahabat");
+        setStoreTheme(s.store_theme||"blue");
+        setThemePrimary(s.theme_primary||"#2563EB");
+        setThemeSecondary(s.theme_secondary||"#1E3A8A");
         const b={}, e={};
         BANKS.forEach(bk => {
           b[bk] = { number: s[`bank_${bk}`]||"", name: s[`bank_${bk}_name`]||"" };
@@ -756,17 +789,18 @@ function Settings({ user, toast }) {
     setSaving(true);
     try {
       
-      await saveSettings({ store_name: storeName, store_addr: storeAddr, store_hours: storeHours });
+      await saveSettings({ store_name: storeName, store_addr: storeAddr, store_hours: storeHours, store_address: storeAddr, store_tagline: storeTagline });
       toast.add("Informasi toko berhasil disimpan ✅");
     } catch(e) { toast.add("Gagal simpan: "+e.message, "err"); }
     setSaving(false);
   };
 
   const tabs = [
-    {id:"wa",   icon:"💬", label:"WhatsApp"},
-    {id:"qris", icon:"📱", label:"QRIS"},
-    {id:"bank", icon:"🏦", label:"Bank & E-Wallet"},
-    {id:"info", icon:"🏪", label:"Info Toko"},
+    {id:"wa",    icon:"💬", label:"WhatsApp"},
+    {id:"qris",  icon:"📱", label:"QRIS"},
+    {id:"bank",  icon:"🏦", label:"Bank & E-Wallet"},
+    {id:"info",  icon:"🏪", label:"Info Toko"},
+    {id:"theme", icon:"🎨", label:"Tema & Warna"},
   ];
 
   if (loading) return (
@@ -901,7 +935,8 @@ function Settings({ user, toast }) {
           <h3 style={{fontWeight:800,fontSize:15,marginBottom:16}}>🏪 Informasi Toko</h3>
           <Field label="Nama Toko"><input className="inp" value={storeName} onChange={e=>setStoreName(e.target.value)}/></Field>
           <Field label="Alamat Toko"><textarea className="inp" rows={2} value={storeAddr} onChange={e=>setStoreAddr(e.target.value)} style={{resize:"none"}}/></Field>
-          <Field label="Jam Operasional"><input className="inp" value={storeHours} onChange={e=>setStoreHours(e.target.value)}/></Field>
+          <Field label="Tagline / Slogan"><input className="inp" value={storeTagline} onChange={e=>setStoreTagline(e.target.value)} placeholder="Belanja Mudah · Harga Bersahabat"/></Field>
+          <Field label="Jam Operasional"><input className="inp" value={storeHours} onChange={e=>setStoreHours(e.target.value)} placeholder="07.00 - 21.00 WIB"/></Field>
           <button onClick={saveInfo} disabled={saving} className="btn btn-primary">
             {saving?"Menyimpan...":"💾 Simpan Info Toko"}
           </button>
@@ -916,6 +951,43 @@ function Settings({ user, toast }) {
                 <p style={{fontSize:12,color:"#94A3B8",marginTop:3}}>@{user.username}</p>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {/* ── TAB Tema & Warna ── */}
+      {tab==="theme" && (
+        <div>
+          <div className="card" style={{padding:22,marginBottom:14}}>
+            <h3 style={{fontWeight:800,fontSize:15,marginBottom:4}}>🎨 Tema Warna Toko</h3>
+            <p style={{color:"#64748B",fontSize:13,marginBottom:18}}>Pilih tema warna yang akan diterapkan di tampilan toko pembeli secara real-time</p>
+
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:9,marginBottom:16}}>
+              {[
+                {id:"blue",   c:"#2563EB", label:"Biru"},
+                {id:"green",  c:"#059669", label:"Hijau"},
+                {id:"purple", c:"#7C3AED", label:"Ungu"},
+                {id:"red",    c:"#DC2626", label:"Merah"},
+                {id:"orange", c:"#EA580C", label:"Oranye"},
+                {id:"pink",   c:"#DB2777", label:"Pink"},
+                {id:"teal",   c:"#0D9488", label:"Teal"},
+                {id:"dark",   c:"#1E293B", label:"Gelap"},
+              ].map(t=>(
+                <button key={t.id} onClick={()=>setStoreTheme(t.id)}
+                  style={{padding:"12px 6px",borderRadius:14,border:`3px solid ${storeTheme===t.id?"#0F172A":"transparent"}`,background:"#F8FAFC",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:7,transition:"all .2s",transform:storeTheme===t.id?"scale(1.05)":"scale(1)"}}>
+                  <div style={{width:36,height:36,borderRadius:"50%",background:t.c,boxShadow:`0 4px 12px ${t.c}55`}}/>
+                  <span style={{fontSize:11,fontWeight:700,color:storeTheme===t.id?"#0F172A":"#64748B"}}>{t.label}</span>
+                  {storeTheme===t.id&&<span style={{fontSize:10,fontWeight:900,color:"#059669"}}>✓ Aktif</span>}
+                </button>
+              ))}
+            </div>
+            <button onClick={async()=>{
+              setSaving(true);
+              try{await saveSetting("store_theme",storeTheme);toast.add("Tema berhasil diubah ✅");}
+              catch(e){toast.add("Gagal: "+e.message,"err");}
+              setSaving(false);
+            }} disabled={saving} className="btn btn-primary">
+              {saving?"Menyimpan...":"🎨 Terapkan Tema"}
+            </button>
           </div>
         </div>
       )}
