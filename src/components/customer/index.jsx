@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { fmt, genCode, genId, now } from "../../utils/index.js";
-import { validateVoucher } from "../../lib/db.js";
+import { validateVoucher, updateOrderStatus } from "../../lib/db.js";
 import { CATEGORIES, CAT_ICON, ONGKIR } from "../../data/index.js";
 import { Skel, Stars, Empty, Field, Spinner, StatusBadge } from "../ui/index.jsx";
 
@@ -142,7 +142,7 @@ function ProductCard({ p, onDetail, onAdd }) {
         {!loaded && <Skel w="100%" h="100%" r={0} />}
         <img src={p.img} alt={p.name} loading="lazy" onLoad={()=>setLoaded(true)}
           style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",opacity:loaded?1:0,transition:"opacity .3s"}} />
-        <span className="badge b-blue" style={{position:"absolute",top:8,left:8,fontSize:10,backdropFilter:"blur(6px)"}}>{CAT_ICON[p.cat]}</span>
+        <span className="badge b-blue" style={{position:"absolute",top:8,left:8,fontSize:10,backdropFilter:"blur(6px)"}}>{CAT_ICON[p.cat]||"🏷️"}</span>
         {p.stock<10&&p.stock>0 && <span className="badge b-amber" style={{position:"absolute",top:8,right:8,fontSize:10}}>⚡ Terbatas</span>}
         {p.stock===0 && <div style={{position:"absolute",inset:0,background:"rgba(255,255,255,0.72)",display:"flex",alignItems:"center",justifyContent:"center"}}><span className="badge b-gray">Habis</span></div>}
       </div>
@@ -162,8 +162,12 @@ function ProductCard({ p, onDetail, onAdd }) {
 }
 
 /* ══════ HOME PAGE ══════ */
-export function Home({ products, onDetail, onAdd, q }) {
+export function Home({ products, onDetail, onAdd, q, categories: catsProp }) {
   const [cat, setCat] = useState("Semua");
+  // Gabung Semua + kategori dari DB + fallback ke data/index.js
+  const dynCats = catsProp && catsProp.length > 0
+    ? ["Semua", ...catsProp]
+    : ["Semua",...CATEGORIES.filter(c=>c!=="Semua")];
   const [pg,  setPg]  = useState(1);
   const PER = 10;
 
@@ -221,9 +225,9 @@ export function Home({ products, onDetail, onAdd, q }) {
 
       {/* Category Chips */}
       <div className="noscroll" style={{display:"flex",gap:7,overflowX:"auto",marginBottom:14,paddingBottom:2}}>
-        {CATEGORIES.map(c=>(
+        {dynCats.map(c=>(
           <button key={c} onClick={()=>setCat(c)} className="btn btn-sm" style={{flexShrink:0,borderRadius:99,background:cat===c?"#2563EB":"#fff",color:cat===c?"#fff":"#64748B",border:`1.5px solid ${cat===c?"#2563EB":"#E2E8F4"}`,boxShadow:cat===c?"0 4px 12px rgba(37,99,235,0.25)":"none"}}>
-            {CAT_ICON[c]} {c}
+            {CAT_ICON[c]||"🏷️"} {c}
           </button>
         ))}
       </div>
@@ -261,7 +265,7 @@ export function Detail({ p, onBack, onAdd, onBuy }) {
         <div style={{background:"#F0F4FF",position:"relative",minHeight:300}}>
           {!load && <Skel w="100%" h="100%" r={0}/>}
           <img src={p.img} alt={p.name} onLoad={()=>setLoad(true)} style={{width:"100%",height:"100%",objectFit:"cover",minHeight:300,display:"block",opacity:load?1:0,transition:"opacity .3s"}}/>
-          <span className="badge b-blue" style={{position:"absolute",top:12,left:12,backdropFilter:"blur(6px)"}}>{CAT_ICON[p.cat]} {p.cat}</span>
+          <span className="badge b-blue" style={{position:"absolute",top:12,left:12,backdropFilter:"blur(6px)"}}>{CAT_ICON[p.cat]||"🏷️"} {p.cat}</span>
         </div>
         <div style={{padding:"24px 22px",display:"flex",flexDirection:"column",gap:13}}>
           <h2 style={{fontWeight:900,fontSize:"clamp(17px,2.5vw,23px)",lineHeight:1.3}}>{p.name}</h2>
@@ -883,10 +887,31 @@ export function Success({ order, onHome, settings }) {
 }
 
 /* ══════ ORDERS PAGE ══════ */
-export function Orders({ orders, onBack, customer, waNumber, waName }) {
-  const [detail, setDetail] = useState(null);
+export function Orders({ orders, onBack, customer, waNumber, waName, onOrderUpdate }) {
+  const [detail,       setDetail]      = useState(null);
+  const [cancelling,   setCancelling]  = useState(false);
+  const [cancelMsg,    setCancelMsg]   = useState("");
+  const [confirmCancel,setConfirmCancel] = useState(false);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("semua");
+  // Reset cancel state when modal closes
+  const closeDetail = () => { setDetail(null); setConfirmCancel(false); setCancelMsg(""); };
+
+  const doCancel = async () => {
+    if (!detail) return;
+    setCancelling(true);
+    try {
+      await updateOrderStatus(detail.order_id, "dibatalkan");
+      if (onOrderUpdate) onOrderUpdate(detail.order_id, "dibatalkan");
+      setDetail(prev => ({...prev, order_status: "dibatalkan"}));
+      setCancelMsg("Pesanan berhasil dibatalkan.");
+      setConfirmCancel(false);
+    } catch(e) {
+      setCancelMsg("Gagal membatalkan: " + e.message);
+    }
+    setCancelling(false);
+  };
+
   const filtered = orders.filter(o=>{
     const matchSearch = !search || o.order_id.toLowerCase().includes(search.toLowerCase());
     const matchStatus = filterStatus==="semua" || o.order_status===filterStatus;
@@ -966,7 +991,7 @@ export function Orders({ orders, onBack, customer, waNumber, waName }) {
 
       {/* Modal Detail Pesanan */}
       {detail && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:200,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setDetail(null)}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:200,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={closeDetail}>
           <div style={{background:"#fff",borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:520,maxHeight:"85vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
             <div style={{width:40,height:4,background:"#E2E8F0",borderRadius:99,margin:"0 auto 18px"}}/>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
@@ -1017,6 +1042,27 @@ export function Orders({ orders, onBack, customer, waNumber, waName }) {
               <p style={{fontSize:13,fontWeight:700}}>{detail.payment_method}</p>
             </div>
 
+            {/* Cancel button - only show for diproses */}
+            {detail.order_status === "diproses" && !confirmCancel && (
+              <button onClick={()=>setConfirmCancel(true)}
+                style={{width:"100%",padding:"12px",background:"#FEF2F2",border:"1.5px solid #FECACA",borderRadius:12,fontWeight:700,fontSize:14,cursor:"pointer",color:"#DC2626",marginBottom:10}}>
+                ❌ Batalkan Pesanan
+              </button>
+            )}
+            {confirmCancel && (
+              <div style={{background:"#FEF2F2",border:"1.5px solid #FECACA",borderRadius:12,padding:"14px 16px",marginBottom:10}}>
+                <p style={{fontWeight:800,fontSize:13,color:"#DC2626",marginBottom:8}}>⚠️ Yakin ingin membatalkan pesanan ini?</p>
+                <p style={{fontSize:12,color:"#64748B",marginBottom:12}}>Pesanan yang dibatalkan tidak bisa dipulihkan.</p>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>setConfirmCancel(false)} style={{flex:1,padding:"9px",background:"#F1F5F9",border:"none",borderRadius:9,fontWeight:700,fontSize:13,cursor:"pointer"}}>Tidak</button>
+                  <button onClick={doCancel} disabled={cancelling}
+                    style={{flex:2,padding:"9px",background:"#EF4444",border:"none",borderRadius:9,fontWeight:800,fontSize:13,cursor:"pointer",color:"#fff"}}>
+                    {cancelling?"Membatalkan...":"Ya, Batalkan"}
+                  </button>
+                </div>
+              </div>
+            )}
+            {cancelMsg && <p style={{fontSize:12,color:"#059669",fontWeight:700,textAlign:"center",marginBottom:10}}>{cancelMsg}</p>}
             {waNumber&&(
               <a href={`https://wa.me/${sanitizeWA(waNumber)}?text=Halo%2C%20saya%20mau%20tanya%20pesanan%20${detail.order_id}`}
                 target="_blank" rel="noreferrer"
@@ -1024,7 +1070,7 @@ export function Orders({ orders, onBack, customer, waNumber, waName }) {
                 💬 Tanya via WhatsApp
               </a>
             )}
-            <button onClick={()=>setDetail(null)} style={{width:"100%",padding:"12px",background:"#F1F5F9",border:"none",borderRadius:12,fontWeight:700,fontSize:14,cursor:"pointer",color:"#64748B"}}>
+            <button onClick={closeDetail} style={{width:"100%",padding:"12px",background:"#F1F5F9",border:"none",borderRadius:12,fontWeight:700,fontSize:14,cursor:"pointer",color:"#64748B"}}>
               Tutup
             </button>
           </div>

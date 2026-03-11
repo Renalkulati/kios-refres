@@ -6,7 +6,8 @@ import { LoginPage, AdminApp } from "./components/admin/index.jsx";
 import { PRODUCTS as FALLBACK } from "./data/index.js";
 import {
   fetchProducts, fetchOrders, fetchMyOrders, createOrder, decreaseStock,
-  subscribeOrders, subscribeProducts, fetchSettings, subscribeSettings
+  subscribeOrders, subscribeProducts, fetchSettings, subscribeSettings,
+  fetchCategories, subscribeCategories, updateOrderStatus
 } from "./lib/db.js";
 import { kirimStrukTelegram } from "./lib/telegram.js";
 
@@ -27,7 +28,8 @@ export default function App() {
   const [loading,  setLoading]  = useState(true);
   const [dbError,  setDbError]  = useState(false);
 
-  const [settings, setSettings] = useState({wa_number:"6281234567890", wa_name:"Admin KIOS REFRES", qris_image:""});
+  const [settings,   setSettings]   = useState({wa_number:"6281234567890", wa_name:"Admin KIOS REFRES", qris_image:""});
+  const [categories, setCategories] = useState([]);
   const [page,    setPage]    = useState("home");
   const [product, setProduct] = useState(null);
   const [cart,    setCart]    = useState([]);
@@ -40,7 +42,8 @@ export default function App() {
   useEffect(() => {
     async function loadAll() {
       try {
-        const [prods, allOrds, sett] = await Promise.all([fetchProducts(), fetchOrders(), fetchSettings()]);
+        const [prods, allOrds, sett, cats] = await Promise.all([fetchProducts(), fetchOrders(), fetchSettings(), fetchCategories()]);
+        if (cats && cats.length) setCategories(cats);
         setProducts(prods.length ? prods : FALLBACK);
         setOrders(allOrds);
         if (sett && Object.keys(sett).length) setSettings(s=>({...s,...sett}));
@@ -97,7 +100,8 @@ export default function App() {
       if (payload.eventType==="INSERT") setProducts(p=>[...p,payload.new]);
       if (payload.eventType==="DELETE") setProducts(p=>p.filter(x=>x.id!==payload.old.id));
     });
-    return () => { orderCh.unsubscribe(); prodCh.unsubscribe(); settCh.unsubscribe(); };
+    const catCh = subscribeCategories(() => fetchCategories().then(c => { if(c.length) setCategories(c); }).catch(console.error));
+    return () => { orderCh.unsubscribe(); prodCh.unsubscribe(); settCh.unsubscribe(); catCh.unsubscribe(); };
   }, [dbError, customer]);
 
   /* ── Login customer ── */
@@ -216,12 +220,16 @@ export default function App() {
         customer={customer} onLogout={handleCustomerLogout}/>
 
       <main style={{paddingBottom:70}}>
-        {page==="home"     && <Home products={products} onDetail={p=>{setProduct(p);setPage("detail");}} onAdd={addCart} q={q}/>}
+        {page==="home"     && <Home products={products} onDetail={p=>{setProduct(p);setPage("detail");}} onAdd={addCart} q={q} categories={categories}/>}
         {page==="detail"   && product && <Detail p={product} onBack={()=>setPage("home")} onAdd={addCart} onBuy={(p,qty)=>{setCart([{...p,qty}]);setPage("checkout");}}/>}
         {page==="cart"     && <Cart cart={cart} onQty={updQty} onRemove={id=>setCart(p=>p.filter(i=>i.id!==id))} onCheckout={()=>setPage("checkout")} onBack={()=>setPage("home")}/>}
         {page==="checkout" && <Checkout cart={cart} onBack={()=>setPage("cart")} onSuccess={onSuccess} customer={customer} settings={settings}/>}
         {page==="success"  && last && <Success order={last} onHome={()=>handleSetPage("home")} settings={settings}/>}
-        {page==="orders"   && <Orders orders={myOrders} onBack={()=>handleSetPage("home")} customer={customer} waNumber={settings.wa_number} waName={settings.wa_name}/>}
+        {page==="orders"   && <Orders orders={myOrders} onBack={()=>handleSetPage("home")} customer={customer} waNumber={settings.wa_number} waName={settings.wa_name}
+          onOrderUpdate={(orderId, status) => {
+            setMyOrders(prev => prev.map(o => o.order_id===orderId ? {...o, order_status:status} : o));
+            setOrders(prev => prev.map(o => o.order_id===orderId ? {...o, order_status:status} : o));
+          }}/>}
       </main>
 
       <BottomNav page={page} setPage={handleSetPage} n={cartN}/>

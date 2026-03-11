@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { fetchOrders, updateOrderStatus, subscribeOrders, fetchStaff, saveStaff, deleteStaff, subscribeStaff, fetchCategories, saveCategory, deleteCategory, subscribeCategories, loginStaff, fetchSettings, saveSettings, saveSetting, subscribeSettings, uploadProductImage, fetchVouchers, saveVoucher, deleteVoucher } from "../../lib/db.js";
 import { supabase } from "../../lib/supabase.js";
-import { fetchOrderStats, fetchProductStats } from "../../lib/analytics.js";
 import { fmt, now } from "../../utils/index.js";
 import { useToast, ToastBox, StatCard, Modal, Confirm, Empty, Field, Spinner, StatusBadge } from "../ui/index.jsx";
 
@@ -1253,19 +1252,37 @@ export function AdminApp({ user, onLogout, onUserUpdate, products, setProducts,
 }
 
 /* ══════ LAPORAN & ANALITIK ══════ */
+function computeStats(orders, period) {
+  const since = new Date(); since.setDate(since.getDate() - period);
+  const filtered = orders.filter(o => new Date(o.created_at||o.order_date||0) >= since);
+  const byDay = {};
+  filtered.forEach(o => {
+    const d = (o.created_at||o.order_date||"").slice(0,10); if(!d) return;
+    if(!byDay[d]) byDay[d]={date:d,revenue:0,count:0};
+    byDay[d].revenue += o.total_price||0; byDay[d].count++;
+  });
+  const statusCount = {diproses:0,dikirim:0,selesai:0,dibatalkan:0};
+  filtered.forEach(o=>{ if(statusCount[o.order_status]!==undefined) statusCount[o.order_status]++; });
+  const paymentCount = {};
+  filtered.forEach(o=>{ const m=o.payment_method||"Lainnya"; paymentCount[m]=(paymentCount[m]||0)+1; });
+  const totalRevenue  = filtered.filter(o=>o.order_status==="selesai").reduce((s,o)=>s+o.total_price,0);
+  const totalOrders   = filtered.length;
+  const successRate   = totalOrders?Math.round(statusCount.selesai/totalOrders*100):0;
+  const avgOrderValue = statusCount.selesai?Math.round(totalRevenue/statusCount.selesai):0;
+  return { dailyData:Object.values(byDay).sort((a,b)=>a.date.localeCompare(b.date)), statusCount, paymentCount, totalRevenue, totalOrders, successRate, avgOrderValue };
+}
+function computeProductStats(products) {
+  const outOfStock = products.filter(p=>p.stock===0).length;
+  const lowStock   = products.filter(p=>p.stock>0&&p.stock<10).length;
+  const topSelling = [...products].sort((a,b)=>b.sold-a.sold).slice(0,5);
+  const totalInventory = products.reduce((s,p)=>s+p.stock,0);
+  return { totalProducts:products.length, outOfStock, lowStock, topSelling, totalInventory };
+}
+
 function LaporanPage({ orders, products }) {
   const [period,  setPeriod]  = useState(30);
-  const [stats,   setStats]   = useState(null);
-  const [pStats,  setPStats]  = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(()=>{
-    setLoading(true);
-    Promise.all([fetchOrderStats(period), fetchProductStats()])
-      .then(([os, ps])=>{ setStats(os); setPStats(ps); })
-      .catch(console.error)
-      .finally(()=>setLoading(false));
-  },[period]);
+  const stats  = computeStats(orders, period);
+  const pStats = computeProductStats(products);
 
   // Hitung dari data orders prop (untuk realtime)
   const now = new Date();
@@ -1287,14 +1304,12 @@ function LaporanPage({ orders, products }) {
     URL.revokeObjectURL(url);
   };
 
-  if(loading) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:80,gap:14,flexDirection:"column"}}><Spinner size={40}/><p style={{fontWeight:700,color:"#64748B"}}>Memuat laporan...</p></div>;
-
   return (
     <div style={{padding:"20px 18px 60px",maxWidth:800}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
         <div>
           <h2 style={{fontWeight:900,fontSize:19}}>📈 Laporan & Analitik</h2>
-          <p style={{color:"#64748B",fontSize:13}}>Data performa toko Anda</p>
+          <p style={{color:"#64748B",fontSize:13}}>Data performa toko Anda · Realtime</p>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <select className="inp" value={period} onChange={e=>setPeriod(+e.target.value)} style={{width:"auto"}}>
