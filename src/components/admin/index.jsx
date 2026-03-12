@@ -1,397 +1,431 @@
-import { useState, useEffect } from "react";
-import { fetchOrders, updateOrderStatus, subscribeOrders, fetchStaff, saveStaff, deleteStaff, subscribeStaff, fetchCategories, saveCategory, deleteCategory, subscribeCategories, loginStaff, fetchSettings, saveSettings, saveSetting, subscribeSettings, uploadProductImage, fetchAllVouchers, saveVoucher, deleteVoucher, subscribeVouchers } from "../../lib/db.js";
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  fetchOrders, updateOrderStatus, subscribeOrders,
+  fetchStaff, saveStaff, deleteStaff, subscribeStaff,
+  fetchCategories, saveCategory, deleteCategory, subscribeCategories,
+  loginStaff, fetchSettings, saveSettings, saveSetting,
+  uploadProductImage, fetchAllVouchers, saveVoucher, deleteVoucher, subscribeVouchers,
+} from "../../lib/db.js";
 import { supabase } from "../../lib/supabase.js";
-import { fmt, now } from "../../utils/index.js";
+import { fmt } from "../../utils/index.js";
 import { useToast, ToastBox, StatCard, Modal, Confirm, Empty, Field, Spinner, StatusBadge } from "../ui/index.jsx";
 
-/* ══════ HELPERS ══════ */
-const parseProducts = (p) => {
-  if (!p) return [];
-  if (Array.isArray(p)) return p;
-  try { return JSON.parse(p); } catch { return []; }
-};
-const fmtDate = (d) => {
-  if (!d) return "-";
-  try { return new Date(d).toLocaleString("id-ID",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}); }
-  catch { return d; }
-};
+/* ─── helpers ─── */
+const parseProducts = p => { if (!p) return []; if (Array.isArray(p)) return p; try { return JSON.parse(p); } catch { return []; } };
+const fmtDate = d => { if (!d) return "–"; try { return new Date(d).toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return d; } };
+const normCats = arr => (arr || []).map(c => typeof c === "string" ? c : c?.name || "").filter(Boolean);
 
-/* ══════ LOGIN PAGE ══════ */
+/* ─── Theme presets ─── */
+const THEMES = [
+  { id: "blue",   label: "Biru",   colors: ["#2563EB","#1E3A8A","#DBEAFE"] },
+  { id: "purple", label: "Ungu",   colors: ["#7C3AED","#4C1D95","#EDE9FE"] },
+  { id: "green",  label: "Hijau",  colors: ["#059669","#064E3B","#D1FAE5"] },
+  { id: "red",    label: "Merah",  colors: ["#DC2626","#7F1D1D","#FEE2E2"] },
+  { id: "orange", label: "Oranye", colors: ["#EA580C","#7C2D12","#FFF7ED"] },
+  { id: "pink",   label: "Pink",   colors: ["#DB2777","#831843","#FCE7F3"] },
+  { id: "teal",   label: "Teal",   colors: ["#0D9488","#134E4A","#CCFBF1"] },
+  { id: "dark",   label: "Gelap",  colors: ["#818CF8","#0F172A","#1E293B"] },
+];
+
+/* ══════════ LOGIN ══════════ */
 export function LoginPage({ onLogin }) {
-  const [user, setUser]   = useState("");
-  const [pass, setPass]   = useState("");
-  const [err,  setErr]    = useState("");
-  const [busy, setBusy]   = useState(false);
-  const [show, setShow]   = useState(false);
-
+  const [user, setUser] = useState("");
+  const [pass, setPass] = useState("");
+  const [err,  setErr]  = useState("");
+  const [busy, setBusy] = useState(false);
+  const [show, setShow] = useState(false);
   const handle = async () => {
-    if(!user||!pass){setErr("Username dan password wajib diisi");return;}
+    if (!user || !pass) { setErr("Username dan password wajib diisi"); return; }
     setBusy(true);
     try {
       const acc = await loginStaff(user.trim(), pass);
-      if(acc) onLogin(acc);
+      if (acc) onLogin(acc);
       else { setErr("Username atau password salah"); setBusy(false); }
-    } catch(e) {
-      setErr("Gagal koneksi. Coba lagi."); setBusy(false);
-    }
+    } catch { setErr("Gagal koneksi. Coba lagi."); setBusy(false); }
   };
-
   return (
-    <div style={{minHeight:"100vh",display:"flex",background:"linear-gradient(135deg,#0F172A 0%,#1E3A8A 45%,#1D4ED8 100%)"}}>
-      {/* Left — branding */}
-      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:40,color:"#fff"}} className="hide-mobile">
-        <div style={{maxWidth:400,width:"100%"}}>
-          <div style={{width:72,height:72,background:"rgba(255,255,255,0.1)",borderRadius:22,display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,marginBottom:22,border:"1px solid rgba(255,255,255,0.15)"}}>🛒</div>
-          <h1 style={{fontWeight:900,fontSize:30,marginBottom:10,letterSpacing:"-0.5px"}}>KIOS REFRES</h1>
-          <p style={{color:"rgba(255,255,255,0.6)",fontSize:14,lineHeight:1.75,marginBottom:30}}>Panel manajemen toko untuk Owner & Staff. Kelola produk, pesanan, dan pantau performa toko.</p>
-          {["📦 Kelola Produk & Stok","📊 Dashboard Analitik Real-time","🧾 Manajemen Pesanan Lengkap","👥 Akses Multi-Staff & Owner"].map(f=>(
-            <div key={f} style={{display:"flex",alignItems:"center",gap:10,color:"rgba(255,255,255,0.75)",fontSize:13,marginBottom:10}}>
-              <span style={{width:6,height:6,borderRadius:"50%",background:"#FCD34D",flexShrink:0}}/>
-              {f}
+    <div style={{ minHeight: "100vh", display: "flex", background: "linear-gradient(135deg,#0F172A 0%,#1E3A8A 50%,#1D4ED8 100%)" }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 40, color: "#fff" }} className="hide-mobile">
+        <div style={{ maxWidth: 380 }}>
+          <div style={{ width: 64, height: 64, background: "rgba(255,255,255,.1)", borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, marginBottom: 20 }}>🛒</div>
+          <h1 style={{ fontWeight: 900, fontSize: 26, marginBottom: 8 }}>KIOS REFRES</h1>
+          <p style={{ color: "rgba(255,255,255,.55)", fontSize: 14, lineHeight: 1.8, marginBottom: 28 }}>Panel manajemen toko lengkap untuk Owner & Staff.</p>
+          {["📦 Kelola Produk & Stok","📊 Dashboard Real-time","🧾 Manajemen Pesanan","🎨 Tema Warna Pembeli","🖨️ Cetak Struk Otomatis"].map(f => (
+            <div key={f} style={{ display: "flex", alignItems: "center", gap: 10, color: "rgba(255,255,255,.72)", fontSize: 13, marginBottom: 10 }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#FCD34D", flexShrink: 0 }} />{f}
             </div>
           ))}
         </div>
       </div>
-
-      {/* Right — form */}
-      <div style={{width:"100%",maxWidth:420,background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",padding:"32px 34px",borderRadius:"24px 0 0 24px"}}>
-        <div style={{width:"100%"}}>
-          <h2 style={{fontWeight:900,fontSize:23,marginBottom:6}}>Masuk ke Dashboard</h2>
-          <p style={{color:"#64748B",fontSize:13,marginBottom:26}}>Masukkan kredensial akun Anda</p>
-
-          {err && (
-            <div style={{background:"#FEE2E2",color:"#991B1B",padding:"10px 13px",borderRadius:11,fontSize:13,fontWeight:700,marginBottom:16,border:"1px solid #FECACA",display:"flex",gap:8,alignItems:"center"}}>
-              ❌ {err}
-            </div>
-          )}
-
-          <Field label="Username">
-            <input className="inp" value={user} onChange={e=>{setUser(e.target.value);setErr("");}} placeholder="Masukkan username" onKeyDown={e=>e.key==="Enter"&&handle()}/>
-          </Field>
+      <div style={{ width: "100%", maxWidth: 420, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", padding: "32px 36px", borderRadius: "22px 0 0 22px" }}>
+        <div style={{ width: "100%" }}>
+          <h2 style={{ fontWeight: 900, fontSize: 22, marginBottom: 4 }}>Masuk ke Dashboard</h2>
+          <p style={{ color: "#64748B", fontSize: 13, marginBottom: 22 }}>Masukkan kredensial akun Anda</p>
+          {err && <div style={{ background: "#FEE2E2", color: "#991B1B", padding: "10px 13px", borderRadius: 10, fontSize: 13, fontWeight: 700, marginBottom: 14 }}>❌ {err}</div>}
+          <Field label="Username"><input className="inp" value={user} onChange={e => { setUser(e.target.value); setErr(""); }} placeholder="Username" onKeyDown={e => e.key === "Enter" && handle()} /></Field>
           <Field label="Password">
-            <div style={{position:"relative"}}>
-              <input className="inp" type={show?"text":"password"} value={pass} onChange={e=>{setPass(e.target.value);setErr("");}} placeholder="Masukkan password" onKeyDown={e=>e.key==="Enter"&&handle()} style={{paddingRight:44}}/>
-              <button onClick={()=>setShow(p=>!p)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:16}}>{show?"🙈":"👁️"}</button>
+            <div style={{ position: "relative" }}>
+              <input className="inp" type={show ? "text" : "password"} value={pass} onChange={e => { setPass(e.target.value); setErr(""); }} placeholder="Password" onKeyDown={e => e.key === "Enter" && handle()} style={{ paddingRight: 44 }} />
+              <button onClick={() => setShow(p => !p)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 15, opacity: .5 }}>{show ? "🙈" : "👁️"}</button>
             </div>
           </Field>
-
-          <button onClick={handle} disabled={busy} className="btn btn-primary btn-block btn-lg" style={{marginTop:6,opacity:busy?.7:1}}>
-            {busy?<><Spinner size={18}/> Memverifikasi...</>:"Masuk →"}
+          <button onClick={handle} disabled={busy} className="btn btn-primary btn-block btn-lg" style={{ marginTop: 8, opacity: busy ? .7 : 1 }}>
+            {busy ? <><Spinner size={16} /> Memverifikasi…</> : "Masuk →"}
           </button>
-
-          <div style={{marginTop:22,padding:14,background:"#F8FAFD",borderRadius:11}}>
-            <p style={{fontSize:12,fontWeight:800,color:"#64748B",marginBottom:8}}>Akun Demo (klik untuk isi otomatis):</p>
-            {[["owner","owner123","Owner"],["staf1","staf123","Staff"]].map(([u,p,r])=>(
-              <div key={u} onClick={()=>{setUser(u);setPass(p);setErr("");}} style={{cursor:"pointer",padding:"7px 10px",borderRadius:9,display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5,background:"#fff",border:"1px solid #E2E8F4",transition:"all .15s"}}
-                onMouseEnter={e=>e.currentTarget.style.borderColor="#2563EB"}
-                onMouseLeave={e=>e.currentTarget.style.borderColor="#E2E8F4"}
-              >
-                <span style={{fontSize:12,fontWeight:700,color:"#334155"}}>{u} / {p}</span>
-                <span className={`badge ${r==="Owner"?"b-amber":"b-indigo"}`}>{r==="Owner"?"👑":"🧑"} {r}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
     </div>
   );
 }
 
-/* ══════ ADMIN SIDEBAR ══════ */
-function Sidebar({ active, setActive, user, onLogout, open, onClose, pendingCount=0 }) {
+/* ══════════ SIDEBAR ══════════ */
+function Sidebar({ active, setActive, user, onLogout, open, onClose, alertCount }) {
+  const isOwner = user?.role === "owner";
   const menus = [
-    {id:"dashboard",  icon:"📊",label:"Dashboard"},
-    {id:"products",   icon:"📦",label:"Produk"},
-    {id:"categories", icon:"🏷️",label:"Kategori"},
-    {id:"orders",     icon:"🧾",label:"Pesanan", badge: pendingCount},
-    {id:"vouchers",   icon:"🎟️",label:"Voucher & Promo"},
-    {id:"laporan",    icon:"📈",label:"Laporan"},
-    {id:"staff",      icon:"👥",label:"Staff & Akun"},
-    {id:"settings",   icon:"⚙️",label:"Pengaturan"},
+    { id: "dashboard",  icon: "📊", label: "Dashboard" },
+    { id: "products",   icon: "📦", label: "Produk" },
+    { id: "categories", icon: "🏷️", label: "Kategori" },
+    { id: "orders",     icon: "🧾", label: "Pesanan", badge: alertCount },
+    { id: "vouchers",   icon: "🎟️", label: "Voucher" },
+    { id: "laporan",    icon: "📈", label: "Laporan" },
+    ...(isOwner ? [
+      { id: "staff",    icon: "👥", label: "Staff" },
+      { id: "settings", icon: "⚙️", label: "Pengaturan" },
+    ] : []),
   ];
   return (
     <>
-      {open && <div className="overlay" onClick={onClose}/>}
-      <div className={`admin-sidebar ${open?"open":""}`}>
-        {/* Brand */}
-        <div style={{padding:"22px 18px 16px",borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-            <div style={{width:38,height:38,background:"#2563EB",borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontSize:19}}>🛒</div>
-            <div>
-              <p style={{color:"#fff",fontWeight:900,fontSize:14}}>KIOS REFRES</p>
-              <p style={{color:"rgba(255,255,255,0.38)",fontSize:11}}>Admin Panel</p>
-            </div>
+      {open && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 199 }} onClick={onClose} />}
+      <div className={`admin-sidebar${open ? " open" : ""}`} style={{ zIndex: open ? 200 : 10 }}>
+        <div style={{ padding: "20px 14px 12px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 26 }}>
+            <div style={{ width: 38, height: 38, background: "rgba(255,255,255,.1)", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🛒</div>
+            <div><p style={{ color: "#fff", fontWeight: 900, fontSize: 14 }}>KIOS REFRES</p><p style={{ color: "rgba(255,255,255,.35)", fontSize: 11 }}>Panel Admin</p></div>
           </div>
-          {/* User pill */}
-          <div style={{display:"flex",alignItems:"center",gap:10,background:"rgba(255,255,255,0.06)",borderRadius:11,padding:"9px 12px"}}>
-            <div style={{width:34,height:34,borderRadius:9,background:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:"#fff"}}>{user.avatar}</div>
-            <div>
-              <p style={{color:"#fff",fontSize:13,fontWeight:800}}>{user.name}</p>
-              <span className={`badge ${user.role==="owner"?"b-amber":"b-indigo"}`} style={{fontSize:10,padding:"2px 7px"}}>{user.role==="owner"?"👑 Owner":"🧑 Staff"}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Nav */}
-        <nav style={{flex:1,padding:"14px 10px",overflowY:"auto"}}>
-          {menus.map(m=>(
-            <button key={m.id} onClick={()=>{setActive(m.id);onClose?.();}} className={`sidebar-item ${active===m.id?"active":""}`} style={{position:"relative"}}>
-              <span style={{fontSize:18}}>{m.icon}</span>
-              {m.label}
-              {m.badge>0 && <span style={{marginLeft:"auto",background:"#EF4444",color:"#fff",borderRadius:99,minWidth:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,padding:"0 4px"}}>{m.badge}</span>}
-              {active===m.id && !m.badge && <div style={{marginLeft:"auto",width:5,height:5,borderRadius:"50%",background:"#fff"}}/>}
+          {menus.map(m => (
+            <button key={m.id} onClick={() => { setActive(m.id); onClose(); }} className={`sidebar-item${active === m.id ? " active" : ""}`}>
+              <span style={{ fontSize: 16 }}>{m.icon}</span>
+              <span style={{ flex: 1 }}>{m.label}</span>
+              {m.badge > 0 && <span style={{ background: "#EF4444", color: "#fff", borderRadius: 99, minWidth: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 900, padding: "0 4px" }}>{m.badge}</span>}
             </button>
           ))}
-        </nav>
-
-        {/* Logout */}
-        <div style={{padding:"12px 10px",borderTop:"1px solid rgba(255,255,255,0.08)"}}>
-          <button onClick={onLogout} className="sidebar-item" style={{color:"#FCA5A5",background:"rgba(239,68,68,0.13)"}}>
-            <span style={{fontSize:18}}>🚪</span> Keluar
-          </button>
+        </div>
+        <div style={{ marginTop: "auto", padding: 14, borderTop: "1px solid rgba(255,255,255,.07)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 10 }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(255,255,255,.1)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: "#fff", fontSize: 13 }}>{user?.username?.[0]?.toUpperCase() || "?"}</div>
+            <div><p style={{ color: "#fff", fontWeight: 800, fontSize: 13 }}>{user?.name || user?.username}</p><p style={{ color: "rgba(255,255,255,.35)", fontSize: 11, textTransform: "capitalize" }}>{user?.role}</p></div>
+          </div>
+          <button onClick={onLogout} style={{ width: "100%", padding: 8, borderRadius: 9, border: "1px solid rgba(255,255,255,.1)", background: "rgba(239,68,68,.12)", color: "#F87171", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🚪 Keluar</button>
         </div>
       </div>
     </>
   );
 }
 
-/* ══════ TOPBAR ══════ */
+/* ══════════ TOPBAR ══════════ */
 function Topbar({ title, onMenu, user }) {
   return (
-    <div style={{background:"#fff",borderBottom:"1px solid #E2E8F4",padding:"0 18px",height:56,display:"flex",alignItems:"center",gap:13,position:"sticky",top:0,zIndex:90,boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
-      <button onClick={onMenu} style={{background:"none",border:"none",cursor:"pointer",fontSize:22,color:"#64748B",padding:4,display:"flex"}}>☰</button>
-      <h1 style={{fontWeight:900,fontSize:16,color:"#0F172A",flex:1}}>{title}</h1>
-      <div style={{width:32,height:32,borderRadius:9,background:"#EFF6FF",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:"#2563EB"}}>{user.avatar}</div>
+    <div style={{ background: "#fff", borderBottom: "1px solid #E2E8F0", padding: "0 20px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 50, boxShadow: "0 1px 4px rgba(0,0,0,.05)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <button onClick={onMenu} style={{ background: "#F1F5F9", border: "none", borderRadius: 9, width: 36, height: 36, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>☰</button>
+        <h1 style={{ fontWeight: 900, fontSize: 16, color: "#0F172A" }}>{title}</h1>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+        <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg,#1E3A8A,#2563EB)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: "#fff", fontSize: 13 }}>{user?.username?.[0]?.toUpperCase() || "?"}</div>
+        <span style={{ fontWeight: 700, fontSize: 13, color: "#334155" }} className="hide-mobile">{user?.name || user?.username}</span>
+      </div>
     </div>
   );
 }
 
-/* ══════ DASHBOARD ══════ */
-function Dashboard({ products, orders }) {
-  const revenue = orders.reduce((s,o)=>s+o.total_price,0);
-  const low     = products.filter(p=>p.stock<10).length;
-  const recent  = [...orders].reverse().slice(0,6);
-  const top5    = [...products].sort((a,b)=>b.sold-a.sold).slice(0,5);
-
+/* ══════════ RECEIPT/STRUK ══════════ */
+function ReceiptPrint({ order, onClose }) {
+  const items = parseProducts(order.products);
+  const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0);
+  const doPrint = () => {
+    const sty = document.createElement("style");
+    sty.id = "rp_style";
+    sty.innerHTML = `@media print{body>*:not(#rp_root){display:none!important}#rp_root{display:block!important;position:fixed;inset:0;z-index:99999;background:#fff}.rp_noprint{display:none!important}@page{margin:2mm;size:80mm auto}}`;
+    document.head.appendChild(sty);
+    window.print();
+    setTimeout(() => { try { document.head.removeChild(sty); } catch {} }, 2000);
+  };
   return (
-    <div style={{padding:"20px 18px 40px"}}>
-      <div style={{marginBottom:20}}>
-        <h2 style={{fontWeight:900,fontSize:19,marginBottom:3}}>Selamat datang kembali 👋</h2>
-        <p style={{color:"#64748B",fontSize:13}}>Ringkasan toko Anda hari ini</p>
-      </div>
-
-      <div className="stat-grid" style={{marginBottom:22}}>
-        <StatCard icon="💰" label="Total Pendapatan"  value={fmt(revenue)}         color="#059669" bg="#D1FAE5" sub="Semua pesanan"/>
-        <StatCard icon="🧾" label="Total Pesanan"     value={orders.length}         color="#2563EB" bg="#EFF6FF" sub="Semua status"/>
-        <StatCard icon="📦" label="Total Produk"      value={products.length}       color="#6366F1" bg="#EEF2FF" sub="Produk aktif"/>
-        <StatCard icon="⚠️" label="Stok Kritis"       value={low}                   color="#F59E0B" bg="#FEF3C7" sub="Produk < 10 unit"/>
-      </div>
-
-      <div style={{display:"grid",gridTemplateColumns:"1fr",gap:18}}>
-        {/* Recent Orders */}
-        <div className="card" style={{overflow:"hidden"}}>
-          <div style={{padding:"16px 18px 12px",borderBottom:"1px solid #F1F5F9"}}>
-            <h3 style={{fontWeight:800,fontSize:15}}>🧾 Pesanan Terbaru</h3>
-          </div>
-          {!recent.length
-            ? <Empty icon="🧾" title="Belum ada pesanan"/>
-            : <div style={{overflowX:"auto"}}>
-                <table className="tbl">
-                  <thead><tr><th>Order ID</th><th>Pelanggan</th><th>Total</th><th>Metode</th><th>Status</th></tr></thead>
-                  <tbody>
-                    {recent.map(o=>(
-                      <tr key={o.order_id}>
-                        <td style={{fontWeight:700,color:"#2563EB",fontSize:12}}>{o.order_id}</td>
-                        <td style={{fontWeight:700}}>{o.customer_name}</td>
-                        <td style={{fontWeight:900,color:"#2563EB"}}>{fmt(o.total_price)}</td>
-                        <td><span className="badge b-gray">{o.delivery_method==="pickup"?"🏪 Pickup":"🚚 Delivery"}</span></td>
-                        <td><StatusBadge status={o.order_status}/></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-          }
+    <div id="rp_root" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "#fff", borderRadius: 18, padding: 22, maxWidth: 380, width: "100%", maxHeight: "92vh", overflowY: "auto", boxShadow: "0 24px 80px rgba(0,0,0,.3)" }}>
+        <div className="rp_noprint" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h3 style={{ fontWeight: 900, fontSize: 16 }}>🖨️ Cetak Struk</h3>
+          <button onClick={onClose} style={{ background: "#F1F5F9", border: "none", cursor: "pointer", width: 32, height: 32, borderRadius: "50%", fontSize: 16 }}>×</button>
         </div>
-
-        {/* Top Products */}
-        <div className="card" style={{overflow:"hidden"}}>
-          <div style={{padding:"16px 18px 12px",borderBottom:"1px solid #F1F5F9"}}>
-            <h3 style={{fontWeight:800,fontSize:15}}>🏆 Produk Terlaris</h3>
+        {/* Receipt paper */}
+        <div style={{ fontFamily: "'Courier New',monospace", fontSize: 12, padding: "14px", border: "1px dashed #CBD5E1", borderRadius: 8 }}>
+          <div style={{ textAlign: "center", paddingBottom: 10, marginBottom: 10, borderBottom: "1px dashed #CBD5E1" }}>
+            <p style={{ fontWeight: 900, fontSize: 15, letterSpacing: 1 }}>★ KIOS REFRES ★</p>
+            <p style={{ fontSize: 10, color: "#555", marginTop: 2 }}>Struk Pembelian</p>
+            <p style={{ fontSize: 10, color: "#555" }}>{fmtDate(order.order_date)}</p>
           </div>
-          <div style={{padding:"6px 0"}}>
-            {top5.map((p,i)=>(
-              <div key={p.id} style={{display:"flex",alignItems:"center",gap:13,padding:"10px 18px",borderBottom:i<4?"1px solid #F1F5F9":"none"}}>
-                <span style={{width:22,fontWeight:900,color:"#94A3B8",fontSize:13}}>#{i+1}</span>
-                <img src={p.img} alt={p.name} style={{width:42,height:42,objectFit:"cover",borderRadius:10,flexShrink:0}} onError={e=>{e.target.src="https://via.placeholder.com/42x42/EFF6FF/2563EB?text=📦";}}/>
-                <div style={{flex:1,minWidth:0}}>
-                  <p style={{fontWeight:800,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</p>
-                  <p style={{fontSize:11,color:"#64748B"}}>{p.sold} terjual</p>
-                </div>
-                <div style={{textAlign:"right",flexShrink:0}}>
-                  <p style={{fontWeight:900,color:"#2563EB",fontSize:13}}>{fmt(p.price)}</p>
-                  <span className={`badge ${p.stock<10?"b-amber":"b-green"}`} style={{fontSize:10}}>Stok: {p.stock}</span>
+          <div style={{ paddingBottom: 10, marginBottom: 10, borderBottom: "1px dashed #CBD5E1" }}>
+            {[["Order ID", order.order_id, true], ["Pelanggan", order.customer_name, true], order.phone && ["HP", order.phone], ["Pengiriman", order.delivery_method === "delivery" ? "Antar Rumah" : "Ambil di Toko"], order.pickup_code && ["Kode Pickup", order.pickup_code, true]].filter(Boolean).map(([l, v, bold]) => (
+              <div key={l} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 3 }}>
+                <span>{l}</span><span style={{ fontWeight: bold ? 900 : 400 }}>{v}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ paddingBottom: 10, marginBottom: 10, borderBottom: "1px dashed #CBD5E1" }}>
+            {items.map((item, i) => (
+              <div key={i} style={{ marginBottom: 5 }}>
+                <p style={{ fontWeight: 700, fontSize: 11 }}>{item.name}</p>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, paddingLeft: 8, color: "#555" }}>
+                  <span>{fmt(item.price)} ×{item.qty}</span>
+                  <span style={{ fontWeight: 900, color: "#000" }}>{fmt(item.price * item.qty)}</span>
                 </div>
               </div>
             ))}
           </div>
+          <div style={{ fontSize: 11 }}>
+            {[["Subtotal", fmt(subtotal)], order.discount_amount > 0 && ["Diskon", "-" + fmt(order.discount_amount)], (order.total_price - subtotal + (order.discount_amount || 0)) > 0 && ["Ongkir", fmt(order.total_price - subtotal + (order.discount_amount || 0))]].filter(Boolean).map(([l, v]) => (
+              <div key={l} style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}><span>{l}</span><span>{v}</span></div>
+            ))}
+            <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #CBD5E1", paddingTop: 6, marginTop: 4 }}>
+              <span style={{ fontWeight: 900, fontSize: 13 }}>TOTAL</span>
+              <span style={{ fontWeight: 900, fontSize: 13 }}>{fmt(order.total_price)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 11 }}><span>Pembayaran</span><span>{order.pay_detail || order.payment_method || "–"}</span></div>
+          </div>
+          <div style={{ textAlign: "center", marginTop: 12, paddingTop: 10, borderTop: "1px dashed #CBD5E1", fontSize: 11, color: "#888" }}>
+            <p>Terima kasih telah berbelanja!</p>
+            <p>Simpan struk ini sebagai bukti pembelian.</p>
+          </div>
         </div>
+        <div className="rp_noprint" style={{ display: "flex", gap: 10, marginTop: 14 }}>
+          <button onClick={onClose} className="btn btn-ghost" style={{ flex: 1 }}>Tutup</button>
+          <button onClick={doPrint} className="btn btn-primary" style={{ flex: 2 }}>🖨️ Cetak</button>
+        </div>
+        <p className="rp_noprint" style={{ fontSize: 11, color: "#94A3B8", textAlign: "center", marginTop: 8 }}>Kompatibel: thermal 80mm & printer biasa</p>
       </div>
     </div>
   );
 }
 
-/* ══════ PRODUCTS MANAGEMENT ══════ */
-function ProductsMgmt({ products, setProducts, toast, categories=["Minuman","Snack","Makanan Instan","Kebutuhan Harian"], setCategories }) {
-  const [search,  setSearch]  = useState("");
-  const [catF,    setCatF]    = useState("Semua");
-  const [modal,   setModal]   = useState(false);
-  const [edit,    setEdit]    = useState(null);
-  const [delId,   setDelId]   = useState(null);
-  const [form,    setForm]    = useState({name:"",price:"",desc:"",img:"",stock:"",cat:"Minuman"});
-  const [errs,    setErrs]    = useState({});
-  const [saving,  setSaving]  = useState(false);
-  // State tambah stok cepat
+/* ══════════ DASHBOARD ══════════ */
+function Dashboard({ products, orders, onNavigate }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const todayOrds = (orders || []).filter(o => (o.order_date || "").slice(0, 10) === today);
+  const revenue = (orders || []).filter(o => o.order_status === "selesai").reduce((s, o) => s + (o.total_price || 0), 0);
+  const pending = (orders || []).filter(o => o.order_status === "diproses").length;
+  const konfirmasi = (orders || []).filter(o => o.order_status === "menunggu_konfirmasi").length;
+  const outStock = (products || []).filter(p => p.stock === 0).length;
+  const lowStock = (products || []).filter(p => p.stock > 0 && p.stock < 10).length;
+  const recent = [...(orders || [])].sort((a, b) => new Date(b.order_date || 0) - new Date(a.order_date || 0)).slice(0, 7);
+  return (
+    <div style={{ padding: "22px 20px 48px" }}>
+      <div style={{ marginBottom: 20 }}><h2 style={{ fontWeight: 900, fontSize: 18, color: "#0F172A" }}>Selamat Datang 👋</h2><p style={{ color: "#64748B", fontSize: 13 }}>Pantau performa toko hari ini</p></div>
+      <div className="stat-grid" style={{ marginBottom: 20 }}>
+        <StatCard icon="🧾" label="Pesanan Hari Ini"  value={todayOrds.length}       sub="masuk hari ini"   color="#2563EB" bg="#EFF6FF" />
+        <StatCard icon="💰" label="Total Pendapatan"   value={fmt(revenue)}           sub="pesanan selesai"  color="#059669" bg="#D1FAE5" />
+        <StatCard icon="⏳" label="Perlu Diproses"     value={pending + konfirmasi}   sub={`${pending} baru, ${konfirmasi} konfirmasi`} color="#F59E0B" bg="#FEF3C7" />
+        <StatCard icon="📦" label="Stok Bermasalah"   value={outStock + lowStock}    sub={`${outStock} habis, ${lowStock} hampir`} color="#EF4444" bg="#FEE2E2" />
+      </div>
+      {(outStock + lowStock) > 0 && (
+        <div style={{ background: "#FFFBEB", border: "1.5px solid #FDE68A", borderRadius: 14, padding: "14px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }} onClick={() => onNavigate("products")}>
+          <span style={{ fontSize: 22 }}>⚠️</span>
+          <div style={{ flex: 1 }}><p style={{ fontWeight: 900, color: "#92400E", fontSize: 14 }}>Peringatan Stok!</p><p style={{ fontSize: 13, color: "#B45309" }}>{outStock > 0 ? `${outStock} produk habis. ` : ""}{lowStock > 0 ? `${lowStock} hampir habis.` : ""}</p></div>
+          <span style={{ color: "#B45309", fontWeight: 900 }}>→</span>
+        </div>
+      )}
+      {konfirmasi > 0 && (
+        <div style={{ background: "#F5F3FF", border: "1.5px solid #DDD6FE", borderRadius: 14, padding: "14px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }} onClick={() => onNavigate("orders")}>
+          <span style={{ fontSize: 22 }}>🔔</span>
+          <div style={{ flex: 1 }}><p style={{ fontWeight: 900, color: "#5B21B6", fontSize: 14 }}>{konfirmasi} Pembeli Klaim Sudah Bayar</p><p style={{ fontSize: 13, color: "#6D28D9" }}>Verifikasi pembayaran sekarang.</p></div>
+          <span style={{ color: "#7C3AED", fontWeight: 900 }}>→</span>
+        </div>
+      )}
+      <div className="card" style={{ overflow: "hidden" }}>
+        <div style={{ padding: "14px 18px", borderBottom: "1px solid #F1F5F9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h3 style={{ fontWeight: 900, fontSize: 14 }}>📋 Pesanan Terbaru</h3>
+          <button onClick={() => onNavigate("orders")} style={{ background: "none", border: "none", cursor: "pointer", color: "#2563EB", fontSize: 12, fontWeight: 800 }}>Lihat Semua →</button>
+        </div>
+        {recent.length === 0 ? <div style={{ padding: 32, textAlign: "center", color: "#94A3B8", fontSize: 13 }}>Belum ada pesanan</div>
+          : <div style={{ overflowX: "auto" }}><table className="tbl"><thead><tr><th>Order ID</th><th>Pelanggan</th><th>Total</th><th>Tanggal</th><th>Status</th></tr></thead>
+            <tbody>{recent.map(o => (<tr key={o.order_id}><td style={{ fontWeight: 800, color: "#2563EB", fontFamily: "monospace", fontSize: 12 }}>{o.order_id}</td><td style={{ fontWeight: 700 }}>{o.customer_name}</td><td style={{ fontWeight: 900 }}>{fmt(o.total_price)}</td><td style={{ color: "#64748B", fontSize: 12 }}>{fmtDate(o.order_date)}</td><td><StatusBadge status={o.order_status} /></td></tr>))}</tbody>
+          </table></div>
+        }
+      </div>
+    </div>
+  );
+}
+
+/* ══════════ PRODUCTS MANAGEMENT ══════════ */
+/* ✅ BUG FIX: Tidak ada useState dengan variabel non-literal sebagai initial value.
+   Root cause sebelumnya: useState(catDefault) dimana catDefault dideklarasi di luar hooks */
+function ProductsMgmt({ products, setProducts, toast, categories: catsProp }) {
+  const catOptions = normCats(catsProp).length > 0 ? normCats(catsProp) : ["Minuman","Snack","Makanan Instan","Kebutuhan Harian"];
+
+  // ✅ Semua useState memakai literal value — tidak ada conditional
+  const [search,       setSearch]       = useState("");
+  const [catF,         setCatF]         = useState("Semua");
+  const [stockF,       setStockF]       = useState("semua");
+  const [modal,        setModal]        = useState(false);
+  const [edit,         setEdit]         = useState(null);
+  const [delId,        setDelId]        = useState(null);
+  const [saving,       setSaving]       = useState(false);
+  const [uploadingImg, setUploadingImg] = useState(false);
   const [stockModal,   setStockModal]   = useState(null);
   const [stockAdd,     setStockAdd]     = useState("");
-  const [uploadingImg, setUploadingImg] = useState(false);
+  const [errs,         setErrs]         = useState({});
+  const [form,         setForm]         = useState({ name: "", price: "", desc: "", img: "", stock: "", cat: "" });
 
-  const filtered = products.filter(p=>{
-    if(catF!=="Semua"&&p.cat!==catF) return false;
-    if(!p.name.toLowerCase().includes(search.toLowerCase())) return false;
-    if(stockF==="habis"&&p.stock!==0) return false;
-    if(stockF==="hampir"&&!(p.stock>0&&p.stock<10)) return false;
-    if(stockF==="aman"&&p.stock<10) return false;
+  const filtered = (products || []).filter(p => {
+    if (catF !== "Semua" && p.cat !== catF) return false;
+    if (!(p.name || "").toLowerCase().includes(search.toLowerCase())) return false;
+    if (stockF === "habis"  && p.stock !== 0) return false;
+    if (stockF === "hampir" && !(p.stock > 0 && p.stock < 10)) return false;
+    if (stockF === "aman"   && p.stock < 10) return false;
     return true;
   });
 
-  const openAdd  = () => { setEdit(null); setForm({name:"",price:"",desc:"",img:"",stock:"",cat:"Minuman"}); setErrs({}); setModal(true); };
-  const openEdit = p  => { setEdit(p); setForm({name:p.name,price:String(p.price),desc:p.desc||"",img:p.img||"",stock:String(p.stock),cat:p.cat||"Minuman"}); setErrs({}); setModal(true); };
+  // ✅ catOptions hanya dipakai di dalam event handlers — aman
+  const openAdd = () => {
+    setEdit(null);
+    setForm({ name: "", price: "", desc: "", img: "", stock: "", cat: catOptions[0] || "Minuman" });
+    setErrs({});
+    setModal(true);
+  };
+  const openEdit = p => {
+    setEdit(p);
+    setForm({ name: p.name, price: String(p.price), desc: p.desc || "", img: p.img || "", stock: String(p.stock), cat: p.cat || catOptions[0] || "Minuman" });
+    setErrs({});
+    setModal(true);
+  };
+  const sf = (k, v) => { setForm(prev => ({ ...prev, [k]: v })); setErrs(prev => ({ ...prev, [k]: "" })); };
 
   const validate = () => {
-    const e={};
-    if(!form.name.trim())               e.name ="Nama wajib diisi";
-    if(!form.price||isNaN(+form.price)) e.price="Harga tidak valid";
-    if(!form.stock||isNaN(+form.stock)) e.stock="Stok tidak valid";
+    const e = {};
+    if (!form.name.trim())                e.name  = "Nama wajib diisi";
+    if (!form.price || isNaN(+form.price)) e.price = "Harga tidak valid";
+    if (!form.stock || isNaN(+form.stock)) e.stock = "Stok tidak valid";
     return e;
   };
 
   const save = async () => {
-    const e=validate(); if(Object.keys(e).length){setErrs(e);return;}
+    const e = validate(); if (Object.keys(e).length) { setErrs(e); return; }
     setSaving(true);
-    const data={name:form.name,price:+form.price,stock:+form.stock,cat:form.cat,img:form.img,desc:form.desc,rating:edit?.rating||4.8,sold:edit?.sold||0};
+    const data = { name: form.name.trim(), price: +form.price, stock: +form.stock, cat: form.cat, img: form.img || "", desc: form.desc, rating: edit?.rating || 4.8, sold: edit?.sold || 0 };
     try {
-      if(edit) {
-        const {error} = await supabase.from("products").update(data).eq("id", edit.id);
-        if(error) throw error;
-        setProducts(p=>p.map(x=>x.id===edit.id?{...x,...data}:x));
-        toast.add("Produk berhasil diperbarui ✅");
+      if (edit) {
+        const { error } = await supabase.from("products").update(data).eq("id", edit.id);
+        if (error) throw error;
+        setProducts(prev => prev.map(x => x.id === edit.id ? { ...x, ...data } : x));
+        toast.add("✅ Produk berhasil diperbarui");
       } else {
-        const {data:inserted, error} = await supabase.from("products").insert([data]).select().single();
-        if(error) throw error;
-        setProducts(p=>[...p, inserted]);
-        toast.add("Produk berhasil ditambahkan ✅");
+        const { data: inserted, error } = await supabase.from("products").insert([data]).select().single();
+        if (error) throw error;
+        setProducts(prev => [...prev, inserted]);
+        toast.add("✅ Produk berhasil ditambahkan");
       }
       setModal(false);
-    } catch(err) {
-      toast.add("Gagal simpan: "+err.message, "err");
-    }
+    } catch (err) { toast.add("Gagal: " + err.message, "err"); }
     setSaving(false);
   };
 
   const del = async () => {
     try {
-      const {error} = await supabase.from("products").delete().eq("id", delId);
-      if(error) throw error;
-      setProducts(p=>p.filter(x=>x.id!==delId));
-      toast.add("Produk dihapus","err");
-    } catch(err) {
-      toast.add("Gagal hapus: "+err.message,"err");
-    }
+      const { error } = await supabase.from("products").delete().eq("id", delId);
+      if (error) throw error;
+      setProducts(prev => prev.filter(x => x.id !== delId));
+      toast.add("Produk dihapus", "err");
+    } catch (err) { toast.add("Gagal hapus: " + err.message, "err"); }
     setDelId(null);
   };
 
-  // Tambah stok cepat tanpa buka modal edit
-  const saveStockAdd = async () => {
-    if(!stockAdd||isNaN(+stockAdd)||+stockAdd<=0) return;
-    const newStock = (stockModal.stock||0) + (+stockAdd);
+  const saveStock = async () => {
+    const add = parseInt(stockAdd, 10);
+    if (!add || add <= 0 || !stockModal) return;
+    const newStock = (stockModal.stock || 0) + add;
     try {
-      const {error} = await supabase.from("products").update({stock: newStock}).eq("id", stockModal.id);
-      if(error) throw error;
-      setProducts(p=>p.map(x=>x.id===stockModal.id?{...x,stock:newStock}:x));
-      toast.add(`Stok ${stockModal.name} +${stockAdd} → ${newStock} unit ✅`);
+      const { error } = await supabase.from("products").update({ stock: newStock }).eq("id", stockModal.id);
+      if (error) throw error;
+      setProducts(prev => prev.map(x => x.id === stockModal.id ? { ...x, stock: newStock } : x));
+      toast.add(`✅ Stok +${add} → total ${newStock}`);
       setStockModal(null); setStockAdd("");
-    } catch(err) {
-      toast.add("Gagal update stok: "+err.message,"err");
-    }
+    } catch (err) { toast.add("Gagal: " + err.message, "err"); }
   };
 
-  const sf  = (k,v) => { setForm(p=>({...p,[k]:v})); setErrs(p=>({...p,[k]:""})); };
+  const habis  = (products || []).filter(p => p.stock === 0).length;
+  const hampir = (products || []).filter(p => p.stock > 0 && p.stock < 10).length;
 
   return (
-    <div style={{padding:"20px 18px 40px"}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18,flexWrap:"wrap",gap:10}}>
+    <div style={{ padding: "22px 20px 48px" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
         <div>
-          <h2 style={{fontWeight:900,fontSize:19}}>Manajemen Produk</h2>
-          <p style={{color:"#64748B",fontSize:13}}>
-            {products.length} produk
-            {products.filter(p=>p.stock===0).length>0&&<span style={{color:"#EF4444",fontWeight:700,marginLeft:8}}>· {products.filter(p=>p.stock===0).length} habis stok</span>}
-            {products.filter(p=>p.stock>0&&p.stock<10).length>0&&<span style={{color:"#F59E0B",fontWeight:700,marginLeft:8}}>· {products.filter(p=>p.stock>0&&p.stock<10).length} hampir habis</span>}
+          <h2 style={{ fontWeight: 900, fontSize: 19, color: "#0F172A" }}>Manajemen Produk</h2>
+          <p style={{ color: "#64748B", fontSize: 13, marginTop: 3 }}>
+            {(products || []).length} produk
+            {habis > 0 && <span style={{ color: "#EF4444", fontWeight: 700, marginLeft: 10 }}>· {habis} habis stok</span>}
+            {hampir > 0 && <span style={{ color: "#F59E0B", fontWeight: 700, marginLeft: 10 }}>· {hampir} hampir habis</span>}
           </p>
         </div>
         <button onClick={openAdd} className="btn btn-primary">+ Tambah Produk</button>
       </div>
-
-      {/* Filter */}
-      <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
-        <div style={{position:"relative",flex:1,minWidth:180}}>
-          <span style={{position:"absolute",left:11,top:"50%",transform:"translateY(-50%)",opacity:.5,fontSize:14}}>🔍</span>
-          <input className="inp" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari produk..." style={{paddingLeft:34}}/>
+      {(habis + hampir) > 0 && (
+        <div style={{ background: "#FFFBEB", border: "1.5px solid #FDE68A", borderRadius: 12, padding: "11px 15px", marginBottom: 14, display: "flex", gap: 9, alignItems: "center" }}>
+          <span>⚠️</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#92400E" }}>
+            {habis > 0 ? `${habis} produk habis stok` : ""}
+            {habis > 0 && hampir > 0 ? " · " : ""}
+            {hampir > 0 ? `${hampir} hampir habis` : ""}
+          </span>
         </div>
-        <select className="inp" value={catF} onChange={e=>setCatF(e.target.value)} style={{width:"auto",flexShrink:0}}>
-          {["Semua",...(categories||[]).filter(c=>c!=="Semua")].map(c=><option key={c}>{c}</option>)}
+      )}
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+        <div style={{ position: "relative", flex: 1, minWidth: 180 }}>
+          <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", opacity: .4, fontSize: 14 }}>🔍</span>
+          <input className="inp" value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari produk..." style={{ paddingLeft: 34 }} />
+        </div>
+        <select className="inp" value={catF} onChange={e => setCatF(e.target.value)} style={{ width: "auto", flexShrink: 0 }}>
+          <option value="Semua">Semua Kategori</option>
+          {catOptions.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
-        <select className="inp" value={stockF||"semua"} onChange={e=>setStockF(e.target.value==="semua"?null:e.target.value)} style={{width:"auto",flexShrink:0}}>
+        <select className="inp" value={stockF} onChange={e => setStockF(e.target.value)} style={{ width: "auto", flexShrink: 0 }}>
           <option value="semua">Semua Stok</option>
           <option value="habis">❌ Habis Stok</option>
           <option value="hampir">⚠️ Hampir Habis</option>
           <option value="aman">✅ Stok Aman</option>
         </select>
       </div>
-
-      <div className="card" style={{overflow:"hidden"}}>
-        <div style={{overflowX:"auto"}}>
+      <div className="card" style={{ overflow: "hidden" }}>
+        <div style={{ overflowX: "auto" }}>
           <table className="tbl">
-            <thead><tr><th>Produk</th><th>Kategori</th><th>Harga</th><th>Stok</th><th>Terjual</th><th>Rating</th><th>Aksi</th></tr></thead>
+            <thead><tr><th>Produk</th><th>Kategori</th><th>Harga</th><th>Stok</th><th>Terjual</th><th>Aksi</th></tr></thead>
             <tbody>
-              {!filtered.length
-                ? <tr><td colSpan={7} style={{textAlign:"center",padding:"40px",color:"#94A3B8"}}>Produk tidak ditemukan</td></tr>
-                : filtered.map(p=>(
+              {filtered.length === 0
+                ? <tr><td colSpan={6} style={{ textAlign: "center", padding: 40, color: "#94A3B8", fontSize: 14 }}>📦 Tidak ada produk ditemukan</td></tr>
+                : filtered.map(p => (
                   <tr key={p.id}>
                     <td>
-                      <div style={{display:"flex",alignItems:"center",gap:11,minWidth:150}}>
-                        <img src={p.img} alt={p.name} style={{width:42,height:42,objectFit:"cover",borderRadius:9,flexShrink:0}} onError={e=>{e.target.src="https://via.placeholder.com/42x42/EFF6FF/2563EB?text=📦";}}/>
-                        <p style={{fontWeight:800,fontSize:13,lineHeight:1.3}}>{p.name}</p>
+                      <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 160 }}>
+                        {p.img
+                          ? <img src={p.img} alt={p.name} style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 10, flexShrink: 0 }} onError={e => { e.target.style.display = "none"; }} />
+                          : <div style={{ width: 44, height: 44, background: "#EFF6FF", borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>📦</div>
+                        }
+                        <div><p style={{ fontWeight: 800, fontSize: 13 }}>{p.name}</p>{p.desc && <p style={{ fontSize: 11, color: "#94A3B8", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.desc}</p>}</div>
                       </div>
                     </td>
-                    <td><span className="badge b-blue">{p.cat}</span></td>
-                    <td style={{fontWeight:900,color:"#2563EB"}}>{fmt(p.price)}</td>
+                    <td><span className="badge b-blue">{p.cat || "–"}</span></td>
+                    <td style={{ fontWeight: 900, color: "#2563EB" }}>{fmt(p.price)}</td>
                     <td>
-                      <div style={{display:"flex",flexDirection:"column",gap:3,alignItems:"flex-start"}}>
-                        <span className={`badge ${p.stock===0?"b-red":p.stock<10?"b-amber":"b-green"}`}>
-                          {p.stock===0?"❌ HABIS":`${p.stock} unit`}
-                        </span>
-                        {p.stock===0&&<span style={{fontSize:10,color:"#EF4444",fontWeight:700}}>Perlu restock!</span>}
-                        {p.stock>0&&p.stock<10&&<span style={{fontSize:10,color:"#F59E0B",fontWeight:700}}>Hampir habis</span>}
+                      <div>
+                        <span className={`badge ${p.stock === 0 ? "b-red" : p.stock < 10 ? "b-amber" : "b-green"}`}>{p.stock === 0 ? "❌ HABIS" : `${p.stock} unit`}</span>
+                        {p.stock === 0 && <p style={{ fontSize: 10, color: "#EF4444", fontWeight: 700, marginTop: 2 }}>Perlu restock!</p>}
+                        {p.stock > 0 && p.stock < 10 && <p style={{ fontSize: 10, color: "#F59E0B", fontWeight: 700, marginTop: 2 }}>Hampir habis</p>}
                       </div>
                     </td>
-                    <td style={{fontWeight:700}}>{p.sold}</td>
-                    <td style={{fontWeight:700}}>⭐ {p.rating}</td>
+                    <td style={{ fontWeight: 700 }}>{p.sold || 0}</td>
                     <td>
-                      <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                        <button onClick={()=>{setStockModal(p);setStockAdd("");}} className="btn btn-sm" style={{background:"#ECFDF5",color:"#059669",fontWeight:800,border:"none",cursor:"pointer"}}>+Stok</button>
-                        <button onClick={()=>openEdit(p)} className="btn btn-secondary btn-sm">Edit</button>
-                        <button onClick={()=>setDelId(p.id)} className="btn btn-danger btn-sm">Hapus</button>
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                        <button onClick={() => { setStockModal(p); setStockAdd(""); }} className="btn btn-green btn-sm">+Stok</button>
+                        <button onClick={() => openEdit(p)} className="btn btn-secondary btn-sm">Edit</button>
+                        <button onClick={() => setDelId(p.id)} className="btn btn-danger btn-sm">Hapus</button>
                       </div>
                     </td>
                   </tr>
@@ -402,86 +436,44 @@ function ProductsMgmt({ products, setProducts, toast, categories=["Minuman","Sna
         </div>
       </div>
 
-      {/* Add/Edit Modal */}
-      <Modal open={modal} onClose={()=>setModal(false)} title={edit?"Edit Produk":"Tambah Produk Baru"}
-        footer={<><button className="btn btn-ghost btn-sm" onClick={()=>setModal(false)}>Batal</button><button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>{saving?"Menyimpan...":"💾 Simpan"}</button></>}
-      >
-        <Field label="Nama Produk" err={errs.name}>
-          <input className={`inp ${errs.name?"inp-err":""}`} value={form.name} onChange={e=>sf("name",e.target.value)} placeholder="Nama produk"/>
-        </Field>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
-          <Field label="Harga (Rp)" err={errs.price}>
-            <input className={`inp ${errs.price?"inp-err":""}`} type="number" value={form.price} onChange={e=>sf("price",e.target.value)} placeholder="0"/>
-          </Field>
-          <Field label="Stok" err={errs.stock}>
-            <input className={`inp ${errs.stock?"inp-err":""}`} type="number" value={form.stock} onChange={e=>sf("stock",e.target.value)} placeholder="0"/>
-          </Field>
+      <Modal open={modal} onClose={() => setModal(false)} title={edit ? "Edit Produk" : "Tambah Produk Baru"}
+        footer={<><button className="btn btn-ghost btn-sm" onClick={() => setModal(false)}>Batal</button><button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>{saving ? <><Spinner size={14} /> Menyimpan…</> : "💾 Simpan"}</button></>}>
+        <Field label="Nama Produk" err={errs.name}><input className={`inp${errs.name ? " inp-err" : ""}`} value={form.name} onChange={e => sf("name", e.target.value)} placeholder="Nama produk" /></Field>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 11 }}>
+          <Field label="Harga (Rp)" err={errs.price}><input className={`inp${errs.price ? " inp-err" : ""}`} type="number" value={form.price} onChange={e => sf("price", e.target.value)} placeholder="0" /></Field>
+          <Field label="Stok" err={errs.stock}><input className={`inp${errs.stock ? " inp-err" : ""}`} type="number" value={form.stock} onChange={e => sf("stock", e.target.value)} placeholder="0" /></Field>
         </div>
-        <Field label="Kategori">
-          <select className="inp" value={form.cat} onChange={e=>sf("cat",e.target.value)}>
-            {categories.map(c=><option key={c}>{c}</option>)}
-          </select>
-        </Field>
+        <Field label="Kategori"><select className="inp" value={form.cat} onChange={e => sf("cat", e.target.value)}>{catOptions.map(c => <option key={c} value={c}>{c}</option>)}</select></Field>
         <Field label="Foto Produk">
-          <input className="inp" value={form.img} onChange={e=>sf("img",e.target.value)} placeholder="URL gambar atau upload di bawah" style={{marginBottom:8}}/>
-          <label style={{display:"flex",alignItems:"center",gap:8,background:"#EFF6FF",border:"1.5px solid #BFDBFE",borderRadius:9,padding:"9px 13px",cursor:"pointer",fontWeight:700,fontSize:13,color:"#2563EB"}}>
-            {uploadingImg ? "⏳ Mengupload..." : "📷 Pilih dari Galeri / Kamera"}
-            <input type="file" accept="image/jpeg,image/png,image/webp" style={{display:"none"}} disabled={uploadingImg} onChange={async e=>{
-              const file=e.target.files[0]; if(!file) return;
-              if(file.size>2*1024*1024){toast.add("Ukuran max 2MB","err");return;}
+          <input className="inp" value={form.img} onChange={e => sf("img", e.target.value)} placeholder="URL gambar produk" style={{ marginBottom: 8 }} />
+          <label style={{ display: "flex", alignItems: "center", gap: 8, background: "#EFF6FF", border: "1.5px solid #BFDBFE", borderRadius: 9, padding: "9px 13px", cursor: "pointer", fontWeight: 700, fontSize: 13, color: "#2563EB" }}>
+            {uploadingImg ? "⏳ Mengupload…" : "📷 Upload Foto"}
+            <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} disabled={uploadingImg} onChange={async e => {
+              const file = e.target.files[0]; if (!file) return;
+              if (file.size > 2 * 1024 * 1024) { toast.add("Ukuran max 2MB", "err"); return; }
               setUploadingImg(true);
-              try {
-                const url = await uploadProductImage(file);
-                sf("img", url);
-                toast.add("✅ Foto berhasil diupload ke server!");
-              } catch(err) {
-                // Fallback ke base64 jika storage belum setup
-                toast.add("Storage belum setup, pakai base64 sementara","info");
-                const r=new FileReader(); r.onload=ev=>sf("img",ev.target.result); r.readAsDataURL(file);
-              }
+              try { const url = await uploadProductImage(file); sf("img", url); toast.add("✅ Foto diupload"); }
+              catch { const r = new FileReader(); r.onload = ev => sf("img", ev.target.result); r.readAsDataURL(file); }
               setUploadingImg(false);
-            }}/>
+            }} />
           </label>
-          <p style={{fontSize:11,color:"#94A3B8",marginTop:5}}>Format: JPG/PNG/WebP · Max 2MB · Tersimpan di Supabase Storage</p>
-          {form.img&&(
-            <div style={{marginTop:8,textAlign:"center",background:"#F8FAFC",borderRadius:9,padding:8}}>
-              <img src={form.img} alt="preview" style={{maxHeight:120,maxWidth:"100%",borderRadius:8,objectFit:"contain"}}
-                onError={e=>{e.target.style.display="none";}}/>
-              <p style={{fontSize:11,color:"#10B981",fontWeight:700,marginTop:4}}>✅ Preview foto</p>
-            </div>
-          )}
+          {form.img && <div style={{ marginTop: 8, textAlign: "center", background: "#F8FAFC", borderRadius: 9, padding: 8 }}><img src={form.img} alt="preview" style={{ maxHeight: 90, maxWidth: "100%", borderRadius: 8, objectFit: "contain" }} onError={e => { e.target.style.display = "none"; }} /></div>}
         </Field>
-        <Field label="Deskripsi">
-          <textarea className="inp" rows={3} value={form.desc} onChange={e=>sf("desc",e.target.value)} placeholder="Deskripsi produk..." style={{resize:"none"}}/>
-        </Field>
+        <Field label="Deskripsi"><textarea className="inp" rows={3} value={form.desc} onChange={e => sf("desc", e.target.value)} placeholder="Deskripsi singkat…" style={{ resize: "none" }} /></Field>
       </Modal>
 
-      <Confirm open={!!delId} onClose={()=>setDelId(null)} onOk={del} danger title="Hapus Produk" msg="Yakin ingin menghapus produk ini? Tindakan ini tidak dapat dibatalkan."/>
+      <Confirm open={!!delId} onClose={() => setDelId(null)} onOk={del} danger title="Hapus Produk" msg="Yakin ingin menghapus produk ini? Tidak dapat dibatalkan." />
 
-      {/* Modal Tambah Stok Cepat */}
-      <Modal open={!!stockModal} onClose={()=>{setStockModal(null);setStockAdd("");}} title="📦 Tambah Stok"
-        footer={<><button className="btn btn-ghost btn-sm" onClick={()=>{setStockModal(null);setStockAdd("");}}>Batal</button><button className="btn btn-primary btn-sm" onClick={saveStockAdd} disabled={!stockAdd||isNaN(+stockAdd)||+stockAdd<=0}>✅ Tambahkan</button></>}
-      >
+      <Modal open={!!stockModal} onClose={() => { setStockModal(null); setStockAdd(""); }} title="📦 Tambah Stok Cepat"
+        footer={<><button className="btn btn-ghost btn-sm" onClick={() => { setStockModal(null); setStockAdd(""); }}>Batal</button><button className="btn btn-primary btn-sm" onClick={saveStock} disabled={!stockAdd || isNaN(+stockAdd) || +stockAdd <= 0}>✅ Tambahkan</button></>}>
         {stockModal && (
           <div>
-            <div style={{display:"flex",alignItems:"center",gap:12,background:"#F8FAFC",borderRadius:10,padding:"10px 14px",marginBottom:16}}>
-              <img src={stockModal.img} alt={stockModal.name} style={{width:44,height:44,borderRadius:8,objectFit:"cover"}}/>
-              <div>
-                <p style={{fontWeight:800,fontSize:14}}>{stockModal.name}</p>
-                <p style={{fontSize:12,color:"#64748B"}}>Stok saat ini: <strong style={{color: stockModal.stock<10?"#F59E0B":"#10B981"}}>{stockModal.stock} unit</strong></p>
-              </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#F8FAFC", borderRadius: 10, padding: "11px 14px", marginBottom: 16 }}>
+              {stockModal.img ? <img src={stockModal.img} alt={stockModal.name} style={{ width: 44, height: 44, borderRadius: 8, objectFit: "cover" }} onError={e => { e.target.style.display = "none"; }} /> : <div style={{ width: 44, height: 44, background: "#EFF6FF", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>📦</div>}
+              <div><p style={{ fontWeight: 800, fontSize: 14 }}>{stockModal.name}</p><p style={{ fontSize: 12, color: "#64748B" }}>Stok saat ini: <strong style={{ color: stockModal.stock < 10 ? "#F59E0B" : "#10B981" }}>{stockModal.stock} unit</strong></p></div>
             </div>
-            <Field label="Jumlah yang ditambahkan">
-              <input className="inp" type="number" min="1" value={stockAdd}
-                onChange={e=>setStockAdd(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&saveStockAdd()}
-                placeholder="Masukkan jumlah stok tambahan" autoFocus/>
-            </Field>
-            {stockAdd && !isNaN(+stockAdd) && +stockAdd>0 && (
-              <div style={{background:"#EFF6FF",borderRadius:9,padding:"8px 13px",fontSize:13,color:"#1D4ED8",fontWeight:700}}>
-                Stok akan menjadi: {stockModal.stock} + {stockAdd} = <strong>{stockModal.stock + (+stockAdd)} unit</strong>
-              </div>
-            )}
+            <Field label="Jumlah yang ditambahkan"><input className="inp" type="number" min="1" value={stockAdd} onChange={e => setStockAdd(e.target.value)} onKeyDown={e => e.key === "Enter" && saveStock()} placeholder="Masukkan jumlah stok tambahan" autoFocus /></Field>
+            {stockAdd && +stockAdd > 0 && <div style={{ background: "#D1FAE5", border: "1px solid #A7F3D0", borderRadius: 10, padding: "9px 12px", marginTop: 8, fontSize: 13, fontWeight: 800, color: "#065F46" }}>Stok baru: {(stockModal.stock || 0) + Number(stockAdd)} unit</div>}
           </div>
         )}
       </Modal>
@@ -489,1186 +481,541 @@ function ProductsMgmt({ products, setProducts, toast, categories=["Minuman","Sna
   );
 }
 
-/* ══════ ORDERS MANAGEMENT ══════ */
+/* ══════════ ORDERS MANAGEMENT ══════════ */
 function OrdersMgmt({ orders, setOrders, toast }) {
-  const [filter, setFilter] = useState("semua");
-  const [search, setSearch] = useState("");
-  const [detail, setDetail] = useState(null);
+  const [filter,  setFilter]  = useState("semua");
+  const [search,  setSearch]  = useState("");
+  const [detail,  setDetail]  = useState(null);
+  const [busy,    setBusy]    = useState(false);
+  const [receipt, setReceipt] = useState(null);
 
-  const filtered = orders.filter(o=>
-    (filter==="semua"||o.order_status===filter)&&
-    (o.order_id.toLowerCase().includes(search.toLowerCase())||o.customer_name.toLowerCase().includes(search.toLowerCase()))
-  );
+  const filtered = (orders || []).filter(o => {
+    if (filter !== "semua" && o.order_status !== filter) return false;
+    const q = search.toLowerCase();
+    return (o.order_id || "").toLowerCase().includes(q) || (o.customer_name || "").toLowerCase().includes(q) || (o.phone || "").toLowerCase().includes(q);
+  });
 
-  const updateStatus = async (id, s) => {
-    // Update lokal dulu supaya UI langsung responsif
-    setOrders(p=>p.map(o=>o.order_id===id?{...o,order_status:s}:o));
-    if(detail?.order_id===id) setDetail(p=>({...p,order_status:s}));
-    toast.add(`Status diperbarui ke "${s}"`);
-    // Update ke Supabase
-    try {
-      await updateOrderStatus(id, s);
-    } catch(e) {
-      console.error("Update status error:", e);
-      toast.add("Gagal update status: " + e.message, "err");
-    }
+  const update = async (id, status) => {
+    setBusy(true);
+    try { await updateOrderStatus(id, status); setOrders(prev => (prev || []).map(o => o.order_id === id ? { ...o, order_status: status } : o)); if (detail?.order_id === id) setDetail(p => ({ ...p, order_status: status })); toast.add(`Status: ${status}`); }
+    catch (e) { toast.add("Gagal: " + e.message, "err"); }
+    setBusy(false);
   };
 
-  const exportCSV = () => {
-    const rows = [
-      ["Order ID","Nama","HP","Total","Metode","Status","Tanggal"],
-      ...[...orders].reverse().map(o=>[
-        o.order_id, o.customer_name, o.phone, o.total_price,
-        o.delivery_method, o.order_status, o.order_date
-      ])
-    ];
-    const csv = rows.map(r=>r.map(v=>`"${v||""}"`).join(",")).join("\n");
-    const blob = new Blob([csv],{type:"text/csv"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href=url; a.download=`pesanan-kiosrefres-${Date.now()}.csv`; a.click();
-    URL.revokeObjectURL(url);
-    toast.add("File CSV berhasil diunduh ✅");
-  };
-
-  const pendingCount   = orders.filter(o=>["diproses","menunggu_konfirmasi","menunggu_bayar"].includes(o.order_status)).length;
-  const konfirmasiCount = orders.filter(o=>o.order_status==="menunggu_konfirmasi").length;
-
-  return (
-    <div style={{padding:"20px 18px 40px"}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18,flexWrap:"wrap",gap:10}}>
-        <div>
-          <h2 style={{fontWeight:900,fontSize:19}}>Manajemen Pesanan</h2>
-          <p style={{color:"#64748B",fontSize:13}}>{orders.length} total · {pendingCount} menunggu diproses</p>
-        </div>
-        <button onClick={exportCSV} className="btn btn-secondary btn-sm">📥 Export CSV</button>
-      </div>
-      {/* Banner: Sudah Bayar - butuh konfirmasi */}
-      {orders.filter(o=>o.order_status==="menunggu_konfirmasi").length > 0 && (
-        <div style={{background:"linear-gradient(135deg,#4C1D95,#6D28D9)",borderRadius:14,padding:"14px 18px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:38,height:38,background:"rgba(255,255,255,0.15)",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>🔔</div>
-            <div>
-              <p style={{color:"#fff",fontWeight:900,fontSize:14}}>{orders.filter(o=>o.order_status==="menunggu_konfirmasi").length} Pembeli Klaim Sudah Bayar</p>
-              <p style={{color:"rgba(255,255,255,0.7)",fontSize:12}}>Cek bukti transfer lalu konfirmasi pesanan</p>
-            </div>
-          </div>
-          <button onClick={()=>setFilter("menunggu_konfirmasi")} style={{background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:9,padding:"7px 16px",color:"#fff",fontWeight:800,fontSize:12,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>
-            Lihat →
-          </button>
-        </div>
-      )}
-
-      {/* Banner: Cash/COD menunggu bayar */}
-      {orders.filter(o=>o.order_status==="menunggu_bayar").length > 0 && (
-        <div style={{background:"linear-gradient(135deg,#064E3B,#065F46)",borderRadius:14,padding:"14px 18px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:38,height:38,background:"rgba(255,255,255,0.15)",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>💵</div>
-            <div>
-              <p style={{color:"#fff",fontWeight:900,fontSize:14}}>{orders.filter(o=>o.order_status==="menunggu_bayar").length} Pesanan Cash / COD</p>
-              <p style={{color:"rgba(255,255,255,0.7)",fontSize:12}}>Pembeli bayar tunai saat terima / di kasir</p>
-            </div>
-          </div>
-          <button onClick={()=>setFilter("menunggu_bayar")} style={{background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:9,padding:"7px 16px",color:"#fff",fontWeight:800,fontSize:12,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>
-            Lihat →
-          </button>
-        </div>
-      )}
-
-      {/* Banner kuning: pesanan diproses biasa */}
-      {orders.filter(o=>o.order_status==="diproses").length > 0 && (
-        <div style={{background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:11,padding:"9px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:18}}>⚠️</span>
-          <p style={{fontWeight:700,fontSize:13,color:"#92400E"}}>{orders.filter(o=>o.order_status==="diproses").length} pesanan baru menunggu diproses!</p>
-        </div>
-      )}
-
-      <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
-        <div style={{position:"relative",flex:1,minWidth:180}}>
-          <span style={{position:"absolute",left:11,top:"50%",transform:"translateY(-50%)",opacity:.5,fontSize:14}}>🔍</span>
-          <input className="inp" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari Order ID / Nama..." style={{paddingLeft:34}}/>
-        </div>
-        <div className="noscroll" style={{display:"flex",gap:6,overflowX:"auto"}}>
-          {["semua","menunggu_konfirmasi","menunggu_bayar","diproses","dikirim","selesai","dibatalkan"].map(s=>(
-            <button key={s} onClick={()=>setFilter(s)} className="btn btn-sm" style={{background:filter===s?"#2563EB":"#fff",color:filter===s?"#fff":"#64748B",border:`1.5px solid ${filter===s?"#2563EB":"#E2E8F4"}`,textTransform:"capitalize",flexShrink:0}}>
-              {s}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="card" style={{overflow:"hidden"}}>
-        {!filtered.length
-          ? <Empty icon="🧾" title="Tidak ada pesanan" desc="Belum ada pesanan sesuai filter"/>
-          : <div style={{overflowX:"auto"}}>
-              <table className="tbl">
-                <thead><tr><th>Order ID</th><th>Pelanggan</th><th>Total</th><th>Pengiriman</th><th>Pembayaran</th><th>Status</th><th>Update</th></tr></thead>
-                <tbody>
-                  {[...filtered].reverse().map(o=>(
-                    <tr key={o.order_id}>
-                      <td style={{fontWeight:800,color:"#2563EB",fontSize:12,cursor:"pointer"}} onClick={()=>setDetail(o)}>{o.order_id}</td>
-                      <td>
-                        <p style={{fontWeight:800,fontSize:13}}>{o.customer_name}</p>
-                        <p style={{fontSize:11,color:"#94A3B8"}}>{o.phone}</p>
-                      </td>
-                      <td style={{fontWeight:900,color:"#2563EB"}}>{fmt(o.total_price)}</td>
-                      <td><span className="badge b-gray">{o.delivery_method==="pickup"?"🏪 Pickup":"🚚 Delivery"}</span></td>
-                      <td>
-                        <span className={`badge ${
-                          o.payment_method==="QRIS"?"b-indigo":
-                          o.payment_method?.startsWith("Transfer")?"b-blue":
-                          ["GoPay","OVO","DANA","ShopeePay"].includes(o.payment_method)?"b-green":"b-gray"
-                        }`} style={{whiteSpace:"nowrap"}}>
-                          {o.payment_method==="QRIS"?"⬛":o.payment_method?.startsWith("Transfer")?"🏦":["GoPay","OVO","DANA","ShopeePay"].includes(o.payment_method)?"📱":"💳"} {o.payment_method||"-"}
-                        </span>
-                      </td>
-                      <td><StatusBadge status={o.order_status}/></td>
-                      <td>
-                        <select value={o.order_status} onChange={e=>updateStatus(o.order_id,e.target.value)} className="inp" style={{width:"auto",padding:"5px 8px",fontSize:12,cursor:"pointer"}}>
-                          {["diproses","menunggu_bayar","menunggu_konfirmasi","dikirim","selesai","dibatalkan"].map(s=><option key={s}>{s}</option>)}
-                        </select>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-        }
-      </div>
-
-      {/* Detail Modal */}
-      <Modal open={!!detail} onClose={()=>setDetail(null)} title="Detail Pesanan">
-        {detail && (
-          <div>
-            <div style={{background:"#F8FAFD",borderRadius:12,padding:13,marginBottom:13}}>
-              <p style={{fontWeight:900,color:"#2563EB",marginBottom:8}}>{detail.order_id}</p>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                {[["Pelanggan",detail.customer_name],["Telepon",detail.phone],["Metode Kirim",detail.delivery_method],["Metode Bayar",detail.payment_method],["Tanggal",detail.order_date],["Alamat",detail.address]].map(([l,v])=>(
-                  <div key={l}><p style={{fontSize:11,color:"#94A3B8",fontWeight:700}}>{l}</p><p style={{fontSize:13,fontWeight:700}}>{v}</p></div>
-                ))}
-              </div>
-              {detail.pickup_code && (
-                <div style={{marginTop:11,background:"#2563EB",borderRadius:10,padding:"10px 13px",textAlign:"center"}}>
-                  <p style={{color:"rgba(255,255,255,0.65)",fontSize:11,marginBottom:4}}>KODE PICKUP</p>
-                  <p style={{color:"#FCD34D",fontWeight:900,fontSize:18,fontFamily:"monospace",letterSpacing:3}}>{detail.pickup_code}</p>
-                </div>
-              )}
-            </div>
-            <p style={{fontWeight:800,fontSize:13,marginBottom:8}}>Produk Dipesan:</p>
-            {parseProducts(detail.products).map((p,i)=>(
-              <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid #F1F5F9"}}>
-                <span style={{fontSize:13}}>{p.name} ×{p.qty}</span>
-                <span style={{fontWeight:800}}>{fmt(p.price*p.qty)}</span>
-              </div>
-            ))}
-            <div style={{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,borderTop:"1px solid #E2E8F4"}}>
-              <span style={{fontWeight:900}}>TOTAL</span>
-              <span style={{fontWeight:900,color:"#2563EB",fontSize:17}}>{fmt(detail.total_price)}</span>
-            </div>
-            <div style={{marginTop:15}}>
-              <p style={{fontSize:12,fontWeight:700,color:"#64748B",marginBottom:6}}>Update Status:</p>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                {["diproses","menunggu_bayar","menunggu_konfirmasi","dikirim","selesai","dibatalkan"].map(s=>(
-                  <button key={s} onClick={()=>updateStatus(detail.order_id,s)} className="btn btn-sm" style={{background:detail.order_status===s?"#2563EB":"#fff",color:detail.order_status===s?"#fff":"#64748B",border:`1.5px solid ${detail.order_status===s?"#2563EB":"#E2E8F4"}`,textTransform:"capitalize"}}>
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </Modal>
-    </div>
-  );
-}
-
-/* ══════ SETTINGS ══════ */
-function Settings({ user, toast }) {
-  const BANKS = ["bca","mandiri","bni","bri","bsi"];
-  const EWALLETS = ["gopay","ovo","dana","shopeepay"];
-
-  const [loading, setLoading] = useState(true);
-  const [saving,  setSaving]  = useState(false);
-  const [tab,     setTab]     = useState("wa"); // wa | bank | qris | info
-
-  // State semua settings
-  const [waNumber,  setWaNumber]  = useState("");
-  const [waName,    setWaName]    = useState("");
-  const [qrisImg,   setQrisImg]   = useState("");
-  const [qrisPreview, setQrisPreview] = useState("");
-  const [banks,     setBanks]     = useState({});
-  const [ewallets,  setEwallets]  = useState({});
-  const [storeName, setStoreName] = useState("KIOS REFRES");
-  const [storeAddr, setStoreAddr] = useState("Jl. Raya Contoh No. 88, Jakarta Selatan");
-  const [storeHours,   setStoreHours]   = useState("07.00 - 21.00 WIB");
-  const [storeTagline, setStoreTagline] = useState("Belanja Mudah · Harga Bersahabat");
-  const [storeTheme,   setStoreTheme]   = useState("blue");
-  const [themePrimary, setThemePrimary] = useState("#2563EB");
-  const [themeSecondary,setThemeSecondary] = useState("#1E3A8A");
-
-  useEffect(() => {
-    async function load() {
-      try {
-        const s = await fetchSettings();
-        setWaNumber(s.wa_number||"");
-        setWaName(s.wa_name||"");
-        setQrisImg(s.qris_image||"");
-        setQrisPreview(s.qris_image||"");
-        setStoreName(s.store_name||"KIOS REFRES");
-        setStoreAddr(s.store_addr||"Jl. Raya Contoh No. 88, Jakarta Selatan");
-        setStoreHours(s.store_hours||"07.00 - 21.00 WIB");
-        setStoreTagline(s.store_tagline||"Belanja Mudah · Harga Bersahabat");
-        setStoreTheme(s.store_theme||"blue");
-        setThemePrimary(s.theme_primary||"#2563EB");
-        setThemeSecondary(s.theme_secondary||"#1E3A8A");
-        const b={}, e={};
-        BANKS.forEach(bk => {
-          b[bk] = { number: s[`bank_${bk}`]||"", name: s[`bank_${bk}_name`]||"" };
-        });
-        EWALLETS.forEach(ew => {
-          e[ew] = s[`ewallet_${ew}`]||"";
-        });
-        setBanks(b); setEwallets(e);
-      } catch(err) { console.error(err); }
-      finally { setLoading(false); }
-    }
-    load();
-  }, []);
-
-  const handleQrisUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (file.size > 500000) { toast.add("Ukuran gambar max 500KB", "err"); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setQrisImg(ev.target.result);
-      setQrisPreview(ev.target.result);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const saveWA = async () => {
-    setSaving(true);
-    try {
-      
-      await saveSettings({ wa_number: waNumber, wa_name: waName });
-      toast.add("Nomor WA berhasil disimpan ✅");
-    } catch(e) { toast.add("Gagal simpan: "+e.message, "err"); }
-    setSaving(false);
-  };
-
-  const saveQris = async () => {
-    setSaving(true);
-    try {
-      
-      await saveSetting("qris_image", qrisImg);
-      toast.add("QRIS berhasil disimpan ✅");
-    } catch(e) { toast.add("Gagal simpan: "+e.message, "err"); }
-    setSaving(false);
-  };
-
-  const saveBanks = async () => {
-    setSaving(true);
-    try {
-      
-      const obj = {};
-      BANKS.forEach(bk => {
-        obj[`bank_${bk}`]      = banks[bk]?.number||"";
-        obj[`bank_${bk}_name`] = banks[bk]?.name||"";
-      });
-      EWALLETS.forEach(ew => {
-        obj[`ewallet_${ew}`] = ewallets[ew]||"";
-      });
-      await saveSettings(obj);
-      toast.add("Info pembayaran berhasil disimpan ✅");
-    } catch(e) { toast.add("Gagal simpan: "+e.message, "err"); }
-    setSaving(false);
-  };
-
-  const saveInfo = async () => {
-    setSaving(true);
-    try {
-      
-      await saveSettings({ store_name: storeName, store_addr: storeAddr, store_hours: storeHours, store_address: storeAddr, store_tagline: storeTagline });
-      toast.add("Informasi toko berhasil disimpan ✅");
-    } catch(e) { toast.add("Gagal simpan: "+e.message, "err"); }
-    setSaving(false);
-  };
-
-  const tabs = [
-    {id:"wa",    icon:"💬", label:"WhatsApp"},
-    {id:"qris",  icon:"📱", label:"QRIS"},
-    {id:"bank",  icon:"🏦", label:"Bank & E-Wallet"},
-    {id:"info",  icon:"🏪", label:"Info Toko"},
-    {id:"theme", icon:"🎨", label:"Tema & Warna"},
+  const statusTabs = [
+    { id: "semua", label: "Semua" }, { id: "diproses", label: "Diproses" },
+    { id: "menunggu_bayar", label: "Tg. Bayar" }, { id: "menunggu_konfirmasi", label: "Konfirmasi" },
+    { id: "dikirim", label: "Dikirim" }, { id: "selesai", label: "Selesai" }, { id: "dibatalkan", label: "Dibatalkan" },
   ];
+  const nextAct = { diproses: { label: "Kirim", next: "dikirim", icon: "🚚" }, menunggu_bayar: { label: "Konfirmasi", next: "dikirim", icon: "✅" }, menunggu_konfirmasi: { label: "Kirim", next: "dikirim", icon: "🚚" }, dikirim: { label: "Selesai", next: "selesai", icon: "✔" } };
 
-  if (loading) return (
-    <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:60,gap:12}}>
-      <Spinner size={28}/><p style={{fontWeight:700,color:"#64748B"}}>Memuat pengaturan...</p>
-    </div>
-  );
+  const exportCSV = () => { const rows = ["Order ID,Pelanggan,Total,Status,Tanggal,Pembayaran", ...(orders || []).map(o => `${o.order_id},"${o.customer_name}",${o.total_price},${o.order_status},"${o.order_date}","${o.pay_detail || o.payment_method || ""}"`)]; const a = document.createElement("a"); a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(rows.join("\n")); a.download = "pesanan.csv"; a.click(); };
 
-  // Hanya owner yang bisa ubah settings
-  if (user.role !== "owner") return (
-    <div style={{padding:"40px 18px",textAlign:"center"}}>
-      <p style={{fontSize:32,marginBottom:12}}>🔒</p>
-      <p style={{fontWeight:800,fontSize:16,color:"#0F172A"}}>Akses Terbatas</p>
-      <p style={{color:"#64748B",fontSize:13,marginTop:6}}>Pengaturan hanya bisa diakses oleh Owner</p>
-    </div>
-  );
-
-  return (
-    <div style={{padding:"20px 18px 60px",maxWidth:640}}>
-      <h2 style={{fontWeight:900,fontSize:19,marginBottom:4}}>⚙️ Pengaturan Toko</h2>
-      <p style={{color:"#64748B",fontSize:13,marginBottom:20}}>Kelola semua konfigurasi KIOS REFRES</p>
-
-      {/* Tab Menu */}
-      <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
-        {tabs.map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)}
-            style={{padding:"8px 16px",borderRadius:99,border:"none",cursor:"pointer",fontWeight:700,fontSize:13,
-              background: tab===t.id?"#2563EB":"#F1F5F9",
-              color: tab===t.id?"#fff":"#64748B",
-              boxShadow: tab===t.id?"0 2px 8px rgba(37,99,235,0.3)":"none",
-              transition:"all .2s"
-            }}>
-            {t.icon} {t.label}
-          </button>
+  if (detail) return (
+    <div style={{ padding: "22px 20px 48px", maxWidth: 720 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
+        <button onClick={() => setDetail(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#2563EB", fontWeight: 800, fontSize: 13, display: "flex", alignItems: "center", gap: 5 }}>← Kembali</button>
+        <div style={{ display: "flex", gap: 8 }}><StatusBadge status={detail.order_status} /><button onClick={() => setReceipt(detail)} className="btn btn-secondary btn-sm">🖨️ Struk</button></div>
+      </div>
+      <div style={{ marginBottom: 16 }}><p style={{ fontSize: 11, color: "#64748B" }}>Order ID</p><p style={{ fontWeight: 900, color: "#2563EB", fontFamily: "monospace", fontSize: 18 }}>{detail.order_id}</p></div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+        {[["Pelanggan", detail.customer_name], ["Nomor HP", detail.phone], ["Tanggal", fmtDate(detail.order_date)], ["Pengiriman", detail.delivery_method === "delivery" ? "🚚 Antar Rumah" : "🏪 Ambil Toko"], ["Pembayaran", detail.pay_detail || detail.payment_method || "–"], detail.address && ["Alamat", detail.address], detail.pickup_code && ["Kode Pickup", detail.pickup_code]].filter(Boolean).map(([l, v]) => (
+          <div key={l} style={{ background: "#F8FAFF", borderRadius: 11, padding: "10px 13px" }}><p style={{ fontSize: 11, color: "#64748B", fontWeight: 700, marginBottom: 3 }}>{l}</p><p style={{ fontSize: 13, fontWeight: 800 }}>{v}</p></div>
         ))}
       </div>
-
-      {/* ── TAB WhatsApp ── */}
-      {tab==="wa" && (
-        <div className="card" style={{padding:22}}>
-          <h3 style={{fontWeight:800,fontSize:15,marginBottom:5}}>💬 Nomor WhatsApp</h3>
-          <p style={{color:"#64748B",fontSize:13,marginBottom:18}}>Nomor ini akan muncul sebagai tombol "Chat WA" di halaman toko untuk pembeli</p>
-          <Field label="Nomor WA (format: 628xxx)">
-            <input className="inp" value={waNumber} onChange={e=>setWaNumber(e.target.value)} placeholder="628123456789"/>
-          </Field>
-          <Field label="Nama yang tampil">
-            <input className="inp" value={waName} onChange={e=>setWaName(e.target.value)} placeholder="Admin KIOS REFRES"/>
-          </Field>
-          <div style={{background:"#EFF6FF",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#1D4ED8"}}>
-            <strong>Preview tombol:</strong> 💬 Chat via WhatsApp<br/>
-            akan menghubungi <strong>{waName||"Admin"}</strong> di <strong>{waNumber||"belum diisi"}</strong>
+      <div className="card" style={{ marginBottom: 14, overflow: "hidden" }}>
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid #F1F5F9", fontWeight: 900, fontSize: 13 }}>🛒 Item Pesanan</div>
+        {parseProducts(detail.products).map((item, i) => (
+          <div key={i} style={{ padding: "11px 16px", borderBottom: "1px solid #F8FAFF", display: "flex", alignItems: "center", gap: 12 }}>
+            {item.img && <img src={item.img} alt={item.name} style={{ width: 40, height: 40, borderRadius: 8, objectFit: "cover" }} onError={e => { e.target.style.display = "none"; }} />}
+            <div style={{ flex: 1 }}><p style={{ fontWeight: 800, fontSize: 13 }}>{item.name}</p><p style={{ fontSize: 12, color: "#64748B" }}>{fmt(item.price)} × {item.qty}</p></div>
+            <p style={{ fontWeight: 900, color: "#2563EB" }}>{fmt(item.price * item.qty)}</p>
           </div>
-          <button onClick={saveWA} disabled={saving} className="btn btn-primary">
-            {saving?"Menyimpan...":"💾 Simpan Nomor WA"}
+        ))}
+        <div style={{ padding: "12px 16px", background: "#F8FAFF", display: "flex", justifyContent: "space-between" }}>
+          <span style={{ fontWeight: 900 }}>TOTAL</span><span style={{ fontWeight: 900, fontSize: 18, color: "#2563EB" }}>{fmt(detail.total_price)}</span>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 10 }}>
+        {nextAct[detail.order_status] && <button onClick={() => update(detail.order_id, nextAct[detail.order_status].next)} disabled={busy} className="btn btn-primary">{nextAct[detail.order_status].icon} {nextAct[detail.order_status].label}</button>}
+        {!["dibatalkan","selesai"].includes(detail.order_status) && <button onClick={() => update(detail.order_id, "dibatalkan")} disabled={busy} className="btn btn-danger">✕ Batalkan</button>}
+      </div>
+      {receipt && <ReceiptPrint order={receipt} onClose={() => setReceipt(null)} />}
+    </div>
+  );
+
+  return (
+    <div style={{ padding: "22px 20px 48px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
+        <div><h2 style={{ fontWeight: 900, fontSize: 19, color: "#0F172A" }}>Manajemen Pesanan</h2><p style={{ color: "#64748B", fontSize: 13 }}>{(orders || []).length} total</p></div>
+        <button onClick={exportCSV} className="btn btn-secondary btn-sm">⬇️ Export CSV</button>
+      </div>
+      <div style={{ position: "relative", marginBottom: 12 }}>
+        <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", opacity: .4, fontSize: 14 }}>🔍</span>
+        <input className="inp" value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari Order ID, nama, HP…" style={{ paddingLeft: 34 }} />
+      </div>
+      <div className="noscroll" style={{ display: "flex", gap: 7, overflowX: "auto", marginBottom: 14, paddingBottom: 4 }}>
+        {statusTabs.map(s => { const cnt = s.id !== "semua" ? (orders || []).filter(o => o.order_status === s.id).length : 0; return (
+          <button key={s.id} onClick={() => setFilter(s.id)} style={{ flexShrink: 0, padding: "6px 14px", borderRadius: 99, border: `1.5px solid ${filter === s.id ? "#2563EB" : "#E2E8F0"}`, background: filter === s.id ? "#2563EB" : "#fff", color: filter === s.id ? "#fff" : "#64748B", fontWeight: 700, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap", transition: "all .15s" }}>
+            {s.label}{cnt > 0 && <span style={{ background: filter === s.id ? "rgba(255,255,255,.3)" : "#DBEAFE", color: filter === s.id ? "#fff" : "#2563EB", borderRadius: 99, minWidth: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 900, padding: "0 4px" }}>{cnt}</span>}
           </button>
-        </div>
-      )}
-
-      {/* ── TAB QRIS ── */}
-      {tab==="qris" && (
-        <div className="card" style={{padding:22}}>
-          <h3 style={{fontWeight:800,fontSize:15,marginBottom:5}}>📱 QR Code QRIS</h3>
-          <p style={{color:"#64748B",fontSize:13,marginBottom:18}}>Upload foto QRIS Anda. Akan ditampilkan saat pembeli pilih metode QRIS</p>
-
-          {qrisPreview ? (
-            <div style={{textAlign:"center",marginBottom:16}}>
-              <img src={qrisPreview} alt="QRIS" style={{maxWidth:220,maxHeight:220,borderRadius:12,border:"2px solid #E2E8F4",objectFit:"contain"}}/>
-              <p style={{fontSize:12,color:"#10B981",fontWeight:700,marginTop:8}}>✅ QRIS sudah diupload</p>
-            </div>
-          ) : (
-            <div style={{background:"#F8FAFC",border:"2px dashed #CBD5E1",borderRadius:12,padding:"30px 20px",textAlign:"center",marginBottom:16}}>
-              <p style={{fontSize:28,marginBottom:8}}>📱</p>
-              <p style={{fontSize:13,color:"#94A3B8"}}>Belum ada gambar QRIS</p>
-            </div>
-          )}
-
-          <label style={{display:"block",background:"#EFF6FF",border:"1.5px solid #BFDBFE",borderRadius:10,padding:"11px 16px",textAlign:"center",cursor:"pointer",fontWeight:700,fontSize:13,color:"#2563EB",marginBottom:14}}>
-            📁 Pilih Foto QRIS
-            <input type="file" accept="image/*" onChange={handleQrisUpload} style={{display:"none"}}/>
-          </label>
-          <p style={{fontSize:11,color:"#94A3B8",marginBottom:16}}>Format: JPG/PNG. Maksimal 500KB</p>
-
-          <button onClick={saveQris} disabled={saving||!qrisImg} className="btn btn-primary">
-            {saving?"Menyimpan...":"💾 Simpan QRIS"}
-          </button>
-        </div>
-      )}
-
-      {/* ── TAB Bank & E-Wallet ── */}
-      {tab==="bank" && (
-        <div>
-          <div className="card" style={{padding:22,marginBottom:14}}>
-            <h3 style={{fontWeight:800,fontSize:15,marginBottom:16}}>🏦 Rekening Bank</h3>
-            {BANKS.map(bk=>(
-              <div key={bk} style={{marginBottom:16,paddingBottom:16,borderBottom:"1px solid #F1F5F9"}}>
-                <p style={{fontWeight:800,fontSize:13,color:"#0F172A",marginBottom:8,textTransform:"uppercase"}}>{bk}</p>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                  <Field label="Nomor Rekening">
-                    <input className="inp" value={banks[bk]?.number||""} placeholder="Nomor rekening"
-                      onChange={e=>setBanks(p=>({...p,[bk]:{...p[bk],number:e.target.value}}))}/>
-                  </Field>
-                  <Field label="Nama Pemilik">
-                    <input className="inp" value={banks[bk]?.name||""} placeholder="Nama a/n"
-                      onChange={e=>setBanks(p=>({...p,[bk]:{...p[bk],name:e.target.value}}))}/>
-                  </Field>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="card" style={{padding:22,marginBottom:14}}>
-            <h3 style={{fontWeight:800,fontSize:15,marginBottom:16}}>📲 E-Wallet</h3>
-            {EWALLETS.map(ew=>(
-              <div key={ew} style={{marginBottom:12}}>
-                <Field label={ew.charAt(0).toUpperCase()+ew.slice(1)}>
-                  <input className="inp" value={ewallets[ew]||""} placeholder="Nomor e-wallet"
-                    onChange={e=>setEwallets(p=>({...p,[ew]:e.target.value}))}/>
-                </Field>
-              </div>
-            ))}
-          </div>
-
-          <button onClick={saveBanks} disabled={saving} className="btn btn-primary btn-block">
-            {saving?"Menyimpan...":"💾 Simpan Semua Info Pembayaran"}
-          </button>
-        </div>
-      )}
-
-      {/* ── TAB Info Toko ── */}
-      {tab==="info" && (
-        <div className="card" style={{padding:22}}>
-          <h3 style={{fontWeight:800,fontSize:15,marginBottom:16}}>🏪 Informasi Toko</h3>
-          <Field label="Nama Toko"><input className="inp" value={storeName} onChange={e=>setStoreName(e.target.value)}/></Field>
-          <Field label="Alamat Toko"><textarea className="inp" rows={2} value={storeAddr} onChange={e=>setStoreAddr(e.target.value)} style={{resize:"none"}}/></Field>
-          <Field label="Tagline / Slogan"><input className="inp" value={storeTagline} onChange={e=>setStoreTagline(e.target.value)} placeholder="Belanja Mudah · Harga Bersahabat"/></Field>
-          <Field label="Jam Operasional"><input className="inp" value={storeHours} onChange={e=>setStoreHours(e.target.value)} placeholder="07.00 - 21.00 WIB"/></Field>
-          <button onClick={saveInfo} disabled={saving} className="btn btn-primary">
-            {saving?"Menyimpan...":"💾 Simpan Info Toko"}
-          </button>
-
-          <div style={{marginTop:24,paddingTop:20,borderTop:"1px solid #F1F5F9"}}>
-            <h3 style={{fontWeight:800,fontSize:15,marginBottom:15}}>👤 Profil Akun</h3>
-            <div style={{display:"flex",alignItems:"center",gap:13}}>
-              <div style={{width:46,height:46,borderRadius:13,background:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:900,color:"#fff"}}>{user.avatar}</div>
-              <div>
-                <p style={{fontWeight:800,fontSize:15}}>{user.name}</p>
-                <span className={`badge ${user.role==="owner"?"b-amber":"b-indigo"}`}>{user.role==="owner"?"👑 Owner":"🧑 Staff"}</span>
-                <p style={{fontSize:12,color:"#94A3B8",marginTop:3}}>@{user.username}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* ── TAB Tema & Warna ── */}
-      {tab==="theme" && (
-        <div>
-          <div className="card" style={{padding:22,marginBottom:14}}>
-            <h3 style={{fontWeight:800,fontSize:15,marginBottom:4}}>🎨 Tema Warna Toko</h3>
-            <p style={{color:"#64748B",fontSize:13,marginBottom:18}}>Pilih tema warna yang akan diterapkan di tampilan toko pembeli secara real-time</p>
-
-            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:9,marginBottom:16}}>
-              {[
-                {id:"blue",   c:"#2563EB", label:"Biru"},
-                {id:"green",  c:"#059669", label:"Hijau"},
-                {id:"purple", c:"#7C3AED", label:"Ungu"},
-                {id:"red",    c:"#DC2626", label:"Merah"},
-                {id:"orange", c:"#EA580C", label:"Oranye"},
-                {id:"pink",   c:"#DB2777", label:"Pink"},
-                {id:"teal",   c:"#0D9488", label:"Teal"},
-                {id:"dark",   c:"#1E293B", label:"Gelap"},
-              ].map(t=>(
-                <button key={t.id} onClick={()=>setStoreTheme(t.id)}
-                  style={{padding:"12px 6px",borderRadius:14,border:`3px solid ${storeTheme===t.id?"#0F172A":"transparent"}`,background:"#F8FAFC",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:7,transition:"all .2s",transform:storeTheme===t.id?"scale(1.05)":"scale(1)"}}>
-                  <div style={{width:36,height:36,borderRadius:"50%",background:t.c,boxShadow:`0 4px 12px ${t.c}55`}}/>
-                  <span style={{fontSize:11,fontWeight:700,color:storeTheme===t.id?"#0F172A":"#64748B"}}>{t.label}</span>
-                  {storeTheme===t.id&&<span style={{fontSize:10,fontWeight:900,color:"#059669"}}>✓ Aktif</span>}
-                </button>
-              ))}
-            </div>
-            <button onClick={async()=>{
-              setSaving(true);
-              try{await saveSetting("store_theme",storeTheme);toast.add("Tema berhasil diubah ✅");}
-              catch(e){toast.add("Gagal: "+e.message,"err");}
-              setSaving(false);
-            }} disabled={saving} className="btn btn-primary">
-              {saving?"Menyimpan...":"🎨 Terapkan Tema"}
-            </button>
-          </div>
-        </div>
-      )}
+        ); })}
+      </div>
+      {filtered.length === 0 ? <Empty icon="🔍" title="Tidak ada pesanan" desc={filter === "semua" ? "Belum ada pesanan masuk" : "Tidak ada pesanan dengan status ini"} />
+        : <div className="card" style={{ overflow: "hidden" }}><div style={{ overflowX: "auto" }}>
+          <table className="tbl"><thead><tr><th>Order ID</th><th>Pelanggan</th><th>Total</th><th>Bayar</th><th>Status</th><th>Tanggal</th><th>Aksi</th></tr></thead>
+            <tbody>{filtered.map(o => (
+              <tr key={o.order_id} style={{ cursor: "pointer" }} onClick={() => setDetail(o)}>
+                <td style={{ fontWeight: 900, color: "#2563EB", fontFamily: "monospace", fontSize: 12 }}>{o.order_id}</td>
+                <td><div><p style={{ fontWeight: 800, fontSize: 13 }}>{o.customer_name}</p><p style={{ fontSize: 11, color: "#94A3B8" }}>{o.phone}</p></div></td>
+                <td style={{ fontWeight: 900 }}>{fmt(o.total_price)}</td>
+                <td><span className="badge b-gray" style={{ fontSize: 11 }}>{o.pay_detail || o.payment_method || "–"}</span></td>
+                <td onClick={e => e.stopPropagation()}><StatusBadge status={o.order_status} /></td>
+                <td style={{ color: "#64748B", fontSize: 12, whiteSpace: "nowrap" }}>{fmtDate(o.order_date)}</td>
+                <td onClick={e => e.stopPropagation()}>
+                  <div style={{ display: "flex", gap: 5 }}>
+                    {nextAct[o.order_status] && <button onClick={() => update(o.order_id, nextAct[o.order_status].next)} disabled={busy} className="btn btn-primary btn-sm" style={{ padding: "5px 9px" }}>{nextAct[o.order_status].icon}</button>}
+                    <button onClick={() => setReceipt(o)} className="btn btn-secondary btn-sm" style={{ padding: "5px 9px" }}>🖨️</button>
+                  </div>
+                </td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div></div>
+      }
+      {receipt && <ReceiptPrint order={receipt} onClose={() => setReceipt(null)} />}
     </div>
   );
 }
 
-/* ══════ CATEGORY MANAGEMENT (embedded in ProductsMgmt) ══════ */
-function CatMgmt({ categories, setCategories, toast, standalone=false }) {
-  const PRESET_ICONS = ["🍔","🍜","🍱","🍕","🍣","🥗","🥤","☕","🧃","🍦","🍰","🍪","🍫","🍬","🛒","🧴","🧹","💊","🧁","🌮","🥩","🍗","🫙","🧂","🥫","🍞","🧀","🥚","🧆","🥞","📦","🏷️","⭐","🎁","🛍️"];
-  const [newCat,  setNewCat]  = useState("");
+/* ══════════ CATEGORY MANAGEMENT ══════════ */
+function CatMgmt({ categories: catsProp, setCategories: setCatsExt, toast, standalone }) {
+  const cats = (catsProp || []).map(c => typeof c === "string" ? { name: c, icon: "📦" } : c).filter(c => c?.name);
+  const [newName, setNewName] = useState("");
   const [newIcon, setNewIcon] = useState("📦");
   const [saving,  setSaving]  = useState(false);
   const [delName, setDelName] = useState(null);
-
-  const add = async () => {
-    const name = newCat.trim();
-    if(!name){ toast.add("Nama kategori tidak boleh kosong","err"); return; }
-    if(categories.includes(name)){ toast.add("Kategori sudah ada","err"); return; }
-    setSaving(true);
-    try{
-      await saveCategory(name, newIcon);
-      const updated = [...categories, name];
-      setCategories(updated);
-      setNewCat(""); setNewIcon("📦");
-      toast.add("✅ Kategori '"+name+"' berhasil ditambahkan");
-    }catch(e){ toast.add("Gagal: "+e.message,"err"); }
-    setSaving(false);
-  };
-
-  const del = async (name) => {
-    try{
-      await deleteCategory(name);
-      setCategories(categories.filter(c=>c!==name));
-      toast.add("Kategori '"+name+"' dihapus","err");
-    }catch(e){ toast.add("Gagal hapus","err"); }
-    setDelName(null);
-  };
-
+  const addCat = async () => { if (!newName.trim()) { toast.add("Nama wajib diisi", "err"); return; } setSaving(true); try { await saveCategory(newName.trim(), newIcon || "📦"); if (setCatsExt) setCatsExt([...(catsProp || []), { name: newName.trim(), icon: newIcon || "📦" }]); setNewName(""); setNewIcon("📦"); toast.add("✅ Kategori ditambahkan"); } catch (e) { toast.add("Gagal: " + e.message, "err"); } setSaving(false); };
+  const delCat = async () => { if (!delName) return; try { await deleteCategory(delName); if (setCatsExt) setCatsExt((catsProp || []).filter(c => (typeof c === "string" ? c : c?.name) !== delName)); toast.add("Kategori dihapus", "err"); } catch (e) { toast.add("Gagal: " + e.message, "err"); } setDelName(null); };
   const body = (
     <div>
-      {/* Tambah kategori baru */}
-      <div className="card" style={{padding:20,marginBottom:18}}>
-        <p style={{fontWeight:800,fontSize:14,marginBottom:14}}>➕ Tambah Kategori Baru</p>
-        <div style={{display:"flex",gap:10,marginBottom:12}}>
-          <div style={{flex:1}}>
-            <input className="inp" value={newCat} onChange={e=>setNewCat(e.target.value)}
-              placeholder="Nama kategori, cth: Makanan Berat"
-              onKeyDown={e=>e.key==="Enter"&&add()}/>
-          </div>
-          <button onClick={add} disabled={saving||!newCat.trim()} className="btn btn-primary" style={{flexShrink:0}}>
-            {saving?"...":"+ Tambah"}
-          </button>
-        </div>
-        <p style={{fontSize:12,fontWeight:700,color:"#64748B",marginBottom:8}}>Pilih ikon:</p>
-        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-          {PRESET_ICONS.map(ic=>(
-            <button key={ic} onClick={()=>setNewIcon(ic)}
-              style={{width:38,height:38,borderRadius:9,border:newIcon===ic?"2.5px solid #2563EB":"1.5px solid #E2E8F0",
-                background:newIcon===ic?"#EFF6FF":"#F8FAFC",fontSize:18,cursor:"pointer",
-                boxShadow:newIcon===ic?"0 2px 8px rgba(37,99,235,0.2)":"none"}}>
-              {ic}
-            </button>
-          ))}
-        </div>
-        <div style={{marginTop:12,background:"#F8FAFC",borderRadius:9,padding:"9px 13px",fontSize:13,color:"#1D4ED8",fontWeight:700}}>
-          Preview: <span style={{fontSize:16}}>{newIcon}</span> {newCat||"Nama Kategori"}
+      <div className="card" style={{ padding: 18, marginBottom: 14 }}>
+        <h3 style={{ fontWeight: 900, fontSize: 14, marginBottom: 12 }}>Tambah Kategori Baru</h3>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <input className="inp" value={newIcon} onChange={e => setNewIcon(e.target.value)} placeholder="Emoji" style={{ width: 60, textAlign: "center", fontSize: 20 }} />
+          <input className="inp" value={newName} onChange={e => setNewName(e.target.value)} placeholder="Nama kategori" style={{ flex: 1, minWidth: 120 }} onKeyDown={e => e.key === "Enter" && addCat()} />
+          <button onClick={addCat} disabled={saving} className="btn btn-primary">{saving ? "…" : "+ Tambah"}</button>
         </div>
       </div>
-
-      {/* List kategori */}
-      <div className="card" style={{overflow:"hidden"}}>
-        <div style={{padding:"14px 18px 10px",borderBottom:"1px solid #F1F5F9"}}>
-          <p style={{fontWeight:800,fontSize:14}}>📋 Daftar Kategori ({categories.length})</p>
-        </div>
-        {!categories.length
-          ? <Empty icon="🏷️" title="Belum ada kategori" desc="Tambah kategori di atas"/>
-          : <div style={{padding:"8px 0"}}>
-              {categories.map((c,i)=>(
-                <div key={c} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 18px",borderBottom:i<categories.length-1?"1px solid #F8FAFC":"none"}}>
-                  <span style={{fontSize:20,width:32,textAlign:"center"}}>📦</span>
-                  <p style={{flex:1,fontWeight:700,fontSize:14}}>{c}</p>
-                  <span className="badge b-blue" style={{fontSize:11}}>Aktif</span>
-                  <button onClick={()=>setDelName(c)} className="btn btn-danger btn-sm">Hapus</button>
-                </div>
-              ))}
-            </div>
+      <div className="card" style={{ overflow: "hidden" }}>
+        {cats.length === 0 ? <div style={{ padding: 28, textAlign: "center", color: "#94A3B8" }}>Belum ada kategori</div>
+          : <table className="tbl"><thead><tr><th>Icon</th><th>Nama</th><th>Aksi</th></tr></thead><tbody>
+            {cats.map(c => (<tr key={c.name}><td style={{ fontSize: 22, textAlign: "center" }}>{c.icon || "📦"}</td><td style={{ fontWeight: 800 }}>{c.name}</td><td><button onClick={() => setDelName(c.name)} className="btn btn-danger btn-sm">Hapus</button></td></tr>))}
+          </tbody></table>
         }
       </div>
-      <Confirm open={!!delName} onClose={()=>setDelName(null)} onOk={()=>del(delName)} danger
-        title="Hapus Kategori" msg={`Hapus kategori "${delName}"? Produk yang menggunakan kategori ini tidak ikut terhapus.`}/>
+      <Confirm open={!!delName} onClose={() => setDelName(null)} onOk={delCat} danger title="Hapus Kategori" msg={`Yakin hapus kategori "${delName}"?`} />
     </div>
   );
-
-  if(standalone) return (
-    <div style={{padding:"20px 18px 60px",maxWidth:640}}>
-      <div style={{marginBottom:18}}>
-        <h2 style={{fontWeight:900,fontSize:19}}>🏷️ Kelola Kategori</h2>
-        <p style={{color:"#64748B",fontSize:13}}>{categories.length} kategori tersedia · Digunakan untuk mengelompokkan produk</p>
-      </div>
-      {body}
-    </div>
-  );
-
+  if (standalone) return <div style={{ padding: "22px 20px 48px" }}><div style={{ marginBottom: 18 }}><h2 style={{ fontWeight: 900, fontSize: 19, color: "#0F172A" }}>Kelola Kategori</h2><p style={{ color: "#64748B", fontSize: 13 }}>{cats.length} kategori</p></div>{body}</div>;
   return body;
 }
 
-
-function StaffMgmt({ currentUser, onUserUpdate, toast }) {
-  const [staffList, setStaffList] = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [modal,     setModal]     = useState(false);
-  const [editS,     setEditS]     = useState(null);
-  const [delId,     setDelId]     = useState(null);
-  const [form,      setForm]      = useState({name:"",username:"",password:"",role:"staff",phone:""});
-  const [saving,    setSaving]    = useState(false);
-  const [myProfile, setMyProfile] = useState(false);
-  const [profForm,  setProfForm]  = useState({name:"",phone:"",password:""});
-
-  useEffect(()=>{
-    async function load(){
-      try{
-        const list = await fetchStaff();
-        setStaffList(list);
-      }catch(e){ toast.add("Gagal load staff","err"); }
-      finally{ setLoading(false); }
-    }
-    load();
-    const ch = subscribeStaff(()=>fetchStaff().then(setStaffList).catch(console.error));
-    return ()=>ch.unsubscribe();
-  },[]);
-
-  const openAdd  = ()=>{ setEditS(null); setForm({name:"",username:"",password:"",role:"staff",phone:""}); setModal(true); };
-  const openEdit = s =>{ setEditS(s); setForm({name:s.name,username:s.username,password:s.password,role:s.role,phone:s.phone||""}); setModal(true); };
-
-  const save = async ()=>{
-    if(!form.name||!form.username||!form.password){ toast.add("Nama, username, dan password wajib diisi","err"); return; }
-    setSaving(true);
-    try{
-      await saveStaff(editS?{...form,id:editS.id}:{...form,is_active:true});
-      toast.add(editS?"Akun berhasil diperbarui ✅":"Akun berhasil ditambahkan ✅");
-      setModal(false);
-    }catch(e){ toast.add("Gagal: "+e.message,"err"); }
-    setSaving(false);
-  };
-
-  const del = async ()=>{
-    try{
-      await deleteStaff(delId);
-      toast.add("Akun dihapus","err");
-    }catch(e){ toast.add("Gagal hapus","err"); }
-    setDelId(null);
-  };
-
-  const toggleActive = async (s)=>{
-    try{
-      await saveStaff({...s, is_active:!s.is_active});
-      toast.add(s.is_active?"Akun dinonaktifkan":"Akun diaktifkan kembali");
-    }catch(e){ toast.add("Gagal","err"); }
-  };
-
-  const saveProfile = async ()=>{
-    if(!profForm.name.trim()){ toast.add("Nama wajib diisi","err"); return; }
-    setSaving(true);
-    try{
-      const newPassword = profForm.password.trim()||currentUser.password;
-      const newName = profForm.name.trim();
-      const newPhone = profForm.phone.trim();
-      const newAvatar = newName.split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase();
-      const upd = {
-        id: currentUser.id,
-        name: newName,
-        phone: newPhone,
-        password: newPassword,
-        username: currentUser.username,
-        role: currentUser.role,
-        is_active: true,
-        avatar: newAvatar
-      };
-      await saveStaff(upd);
-      // Update list staff lokal supaya UI langsung berubah
-      setStaffList(prev => prev.map(s => s.id===currentUser.id ? {...s,...upd} : s));
-      // Beritahu parent (AdminStandalone/AdminApp) supaya session diperbarui
-      const updatedUser = {...currentUser, ...upd};
-      if (onUserUpdate) {
-        onUserUpdate(updatedUser);
-      } else {
-        // fallback: update localStorage langsung
-        localStorage.setItem("kios_refres_admin_v2", JSON.stringify(updatedUser));
+/* ══════════ VOUCHER MANAGEMENT ══════════ */
+function VoucherMgmt({ toast }) {
+  const [vouchers, setVouchers] = useState([]);
+  const [modal,  setModal]  = useState(false);
+  const [edit,   setEdit]   = useState(null);
+  const [delId,  setDelId]  = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [errs,   setErrs]   = useState({});
+  const [form,   setForm]   = useState({ code: "", type: "percent", value: "", min_purchase: "", usage_limit: "", description: "", expires_at: "" });
+  useEffect(() => { fetchAllVouchers().then(setVouchers).catch(() => {}); const ch = subscribeVouchers(() => fetchAllVouchers().then(setVouchers).catch(console.error)); return () => { try { ch.unsubscribe(); } catch {} }; }, []);
+  const sf = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const openAdd = () => { setEdit(null); setForm({ code: "", type: "percent", value: "", min_purchase: "", usage_limit: "", description: "", expires_at: "" }); setErrs({}); setModal(true); };
+  const openEdit = v => { setEdit(v); setForm({ code: v.code, type: v.type, value: String(v.value), min_purchase: String(v.min_purchase || ""), usage_limit: String(v.usage_limit || ""), description: v.description || "", expires_at: v.expires_at?.slice(0, 10) || "" }); setErrs({}); setModal(true); };
+  const validate = () => { const e = {}; if (!form.code.trim()) e.code = "Wajib"; if (!form.value || isNaN(+form.value)) e.value = "Tidak valid"; return e; };
+  const save = async () => { const e = validate(); if (Object.keys(e).length) { setErrs(e); return; } setSaving(true); try { const data = { code: form.code.toUpperCase().trim(), type: form.type, value: +form.value, min_purchase: +form.min_purchase || 0, usage_limit: +form.usage_limit || null, description: form.description, expires_at: form.expires_at || null, is_active: true, used_count: edit?.used_count || 0 }; if (edit) data.id = edit.id; await saveVoucher(data); toast.add(edit ? "✅ Voucher diperbarui" : "✅ Voucher ditambahkan"); setModal(false); } catch (e) { toast.add("Gagal: " + e.message, "err"); } setSaving(false); };
+  const del = async () => { try { await deleteVoucher(delId); toast.add("Voucher dihapus", "err"); } catch (e) { toast.add("Gagal: " + e.message, "err"); } setDelId(null); };
+  return (
+    <div style={{ padding: "22px 20px 48px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+        <div><h2 style={{ fontWeight: 900, fontSize: 19, color: "#0F172A" }}>Voucher & Promo</h2><p style={{ color: "#64748B", fontSize: 13 }}>{vouchers.length} voucher</p></div>
+        <button onClick={openAdd} className="btn btn-primary">+ Tambah Voucher</button>
+      </div>
+      {vouchers.length === 0 ? <Empty icon="🎟️" title="Belum ada voucher" desc="Buat voucher diskon untuk pelanggan" />
+        : <div className="card" style={{ overflow: "hidden" }}><div style={{ overflowX: "auto" }}><table className="tbl"><thead><tr><th>Kode</th><th>Tipe</th><th>Nilai</th><th>Min. Beli</th><th>Pakai</th><th>Kadaluarsa</th><th>Status</th><th>Aksi</th></tr></thead>
+          <tbody>{vouchers.map(v => (<tr key={v.id}>
+            <td style={{ fontWeight: 900, color: "#7C3AED", fontFamily: "monospace" }}>{v.code}</td>
+            <td><span className="badge b-purple">{v.type === "percent" ? "Persen" : "Nominal"}</span></td>
+            <td style={{ fontWeight: 800 }}>{v.type === "percent" ? v.value + "%" : fmt(v.value)}</td>
+            <td style={{ color: "#64748B", fontSize: 12 }}>{v.min_purchase > 0 ? fmt(v.min_purchase) : "–"}</td>
+            <td style={{ color: "#64748B", fontSize: 12 }}>{v.used_count || 0}{v.usage_limit ? "/" + v.usage_limit : " (∞)"}</td>
+            <td style={{ color: "#64748B", fontSize: 12 }}>{v.expires_at ? fmtDate(v.expires_at) : "–"}</td>
+            <td><span className={`badge ${v.is_active ? "b-green" : "b-gray"}`}>{v.is_active ? "Aktif" : "Nonaktif"}</span></td>
+            <td><div style={{ display: "flex", gap: 5 }}><button onClick={() => openEdit(v)} className="btn btn-secondary btn-sm">Edit</button><button onClick={() => setDelId(v.id)} className="btn btn-danger btn-sm">Hapus</button></div></td>
+          </tr>))}</tbody>
+        </table></div></div>
       }
-      toast.add("✅ Profil berhasil diperbarui!" + (profForm.password.trim()?" Password baru aktif.":""));
-      setMyProfile(false);
-    }catch(e){
-      console.error("saveProfile error:", e);
-      toast.add("Gagal simpan: "+e.message,"err");
-    }
-    setSaving(false);
-  };
-
-  const active = staffList.filter(s=>s.is_active);
-
-  return(
-    <div style={{padding:"20px 18px 60px",maxWidth:700}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
-        <div>
-          <h2 style={{fontWeight:900,fontSize:19}}>👥 Manajemen Staff</h2>
-          <p style={{color:"#64748B",fontSize:13}}>{active.length} akun aktif dari {staffList.length} total</p>
+      <Modal open={modal} onClose={() => setModal(false)} title={edit ? "Edit Voucher" : "Tambah Voucher"}
+        footer={<><button className="btn btn-ghost btn-sm" onClick={() => setModal(false)}>Batal</button><button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>{saving ? "…" : "💾 Simpan"}</button></>}>
+        <Field label="Kode" err={errs.code}><input className={`inp${errs.code ? " inp-err" : ""}`} value={form.code} onChange={e => sf("code", e.target.value.toUpperCase())} placeholder="DISKON10" /></Field>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 11 }}>
+          <Field label="Tipe"><select className="inp" value={form.type} onChange={e => sf("type", e.target.value)}><option value="percent">Persen (%)</option><option value="fixed">Nominal (Rp)</option></select></Field>
+          <Field label={form.type === "percent" ? "Nilai (%)" : "Nilai (Rp)"} err={errs.value}><input className={`inp${errs.value ? " inp-err" : ""}`} type="number" value={form.value} onChange={e => sf("value", e.target.value)} placeholder="0" /></Field>
         </div>
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>{setProfForm({name:currentUser.name,phone:currentUser.phone||"",password:""});setMyProfile(true);}} className="btn btn-secondary">✏️ Edit Profilku</button>
-          {currentUser.role==="owner" && <button onClick={openAdd} className="btn btn-primary">+ Tambah Akun</button>}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 11 }}>
+          <Field label="Min. Pembelian"><input className="inp" type="number" value={form.min_purchase} onChange={e => sf("min_purchase", e.target.value)} placeholder="0 = bebas" /></Field>
+          <Field label="Batas Pakai"><input className="inp" type="number" value={form.usage_limit} onChange={e => sf("usage_limit", e.target.value)} placeholder="kosong = ∞" /></Field>
         </div>
-      </div>
-
-      {/* Stats */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:20}}>
-        {[
-          {icon:"👑",label:"Owner",val:staffList.filter(s=>s.role==="owner").length,color:"#F59E0B",bg:"#FEF3C7"},
-          {icon:"🧑",label:"Staff Aktif",val:active.filter(s=>s.role==="staff").length,color:"#2563EB",bg:"#EFF6FF"},
-          {icon:"⛔",label:"Nonaktif",val:staffList.filter(s=>!s.is_active).length,color:"#EF4444",bg:"#FEF2F2"},
-        ].map(s=>(
-          <div key={s.label} style={{background:s.bg,borderRadius:12,padding:"14px",textAlign:"center"}}>
-            <p style={{fontSize:22}}>{s.icon}</p>
-            <p style={{fontWeight:900,fontSize:20,color:s.color}}>{s.val}</p>
-            <p style={{fontSize:11,color:"#64748B",fontWeight:700}}>{s.label}</p>
-          </div>
-        ))}
-      </div>
-
-      {loading ? <div style={{textAlign:"center",padding:40}}><Spinner size={28}/></div> : (
-        <div className="card" style={{overflow:"hidden"}}>
-          {staffList.map((s,i)=>(
-            <div key={s.id} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",borderBottom:i<staffList.length-1?"1px solid #F1F5F9":"none",opacity:s.is_active?1:0.5}}>
-              <div style={{width:42,height:42,borderRadius:12,background:s.role==="owner"?"#F59E0B":"#2563EB",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:900,color:"#fff",flexShrink:0}}>
-                {(s.name||"?").split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase()}
-              </div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:"flex",alignItems:"center",gap:7}}>
-                  <p style={{fontWeight:800,fontSize:14}}>{s.name}</p>
-                  <span className={`badge ${s.role==="owner"?"b-amber":"b-indigo"}`}>{s.role==="owner"?"👑 Owner":"🧑 Staff"}</span>
-                  {!s.is_active && <span className="badge b-red">Nonaktif</span>}
-                </div>
-                <p style={{fontSize:12,color:"#94A3B8"}}>@{s.username} {s.phone?`· ${s.phone}`:""}</p>
-              </div>
-              {currentUser.role==="owner" && s.id!==currentUser.id && (
-                <div style={{display:"flex",gap:6,flexShrink:0}}>
-                  <button onClick={()=>toggleActive(s)} className="btn btn-sm" style={{background:s.is_active?"#FEF2F2":"#ECFDF5",color:s.is_active?"#EF4444":"#059669",border:"none",cursor:"pointer",fontWeight:800}}>
-                    {s.is_active?"Nonaktifkan":"Aktifkan"}
-                  </button>
-                  <button onClick={()=>openEdit(s)} className="btn btn-secondary btn-sm">Edit</button>
-                  <button onClick={()=>setDelId(s.id)} className="btn btn-danger btn-sm">Hapus</button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Modal Tambah/Edit Akun */}
-      <Modal open={modal} onClose={()=>setModal(false)} title={editS?"Edit Akun Staff":"Tambah Akun Baru"}
-        footer={<><button className="btn btn-ghost btn-sm" onClick={()=>setModal(false)}>Batal</button><button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>{saving?"Menyimpan...":"💾 Simpan"}</button></>}>
-        <Field label="Nama Lengkap"><input className="inp" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} placeholder="Nama lengkap"/></Field>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
-          <Field label="Username"><input className="inp" value={form.username} onChange={e=>setForm(p=>({...p,username:e.target.value}))} placeholder="username"/></Field>
-          <Field label="Password"><input className="inp" value={form.password} onChange={e=>setForm(p=>({...p,password:e.target.value}))} placeholder="password"/></Field>
-        </div>
-        <Field label="No. HP (opsional)"><input className="inp" value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))} placeholder="08xxx"/></Field>
-        {currentUser.role==="owner" && (
-          <Field label="Role">
-            <select className="inp" value={form.role} onChange={e=>setForm(p=>({...p,role:e.target.value}))}>
-              <option value="staff">🧑 Staff</option>
-              <option value="owner">👑 Owner</option>
-            </select>
-          </Field>
-        )}
+        <Field label="Kadaluarsa"><input className="inp" type="date" value={form.expires_at} onChange={e => sf("expires_at", e.target.value)} /></Field>
+        <Field label="Keterangan"><input className="inp" value={form.description} onChange={e => sf("description", e.target.value)} placeholder="Deskripsi singkat voucher" /></Field>
       </Modal>
-
-      {/* Modal Edit Profil Sendiri */}
-      <Modal open={myProfile} onClose={()=>setMyProfile(false)} title="✏️ Edit Profil Saya"
-        footer={<><button className="btn btn-ghost btn-sm" onClick={()=>setMyProfile(false)}>Batal</button><button className="btn btn-primary btn-sm" onClick={saveProfile} disabled={saving}>{saving?"Menyimpan...":"💾 Simpan"}</button></>}>
-        <Field label="Nama Lengkap"><input className="inp" value={profForm.name} onChange={e=>setProfForm(p=>({...p,name:e.target.value}))}/></Field>
-        <Field label="No. HP"><input className="inp" value={profForm.phone} onChange={e=>setProfForm(p=>({...p,phone:e.target.value}))} placeholder="08xxx"/></Field>
-        <Field label="Password Baru (kosongkan jika tidak ingin ganti)"><input className="inp" type="password" value={profForm.password} onChange={e=>setProfForm(p=>({...p,password:e.target.value}))} placeholder="Password baru..."/></Field>
-      </Modal>
-
-      <Confirm open={!!delId} onClose={()=>setDelId(null)} onOk={del} danger title="Hapus Akun" msg="Yakin ingin menghapus akun ini? Akun tidak bisa dipulihkan."/>
+      <Confirm open={!!delId} onClose={() => setDelId(null)} onOk={del} danger title="Hapus Voucher" msg="Yakin hapus voucher ini?" />
     </div>
   );
 }
 
-/* ══════ ADMIN APP (entry) ══════ */
-export function AdminApp({ user, onLogout, onUserUpdate, products, setProducts,
+/* ══════════ SETTINGS — dengan Tema Warna Real-time ══════════ */
+function Settings({ toast }) {
+  const BANKS    = ["bca","mandiri","bni","bri","bsi"];
+  const EWALLETS = ["gopay","ovo","dana","shopeepay"];
+  const [loading,   setLoading]   = useState(true);
+  const [saving,    setSaving]    = useState(false);
+  const [savingTm,  setSavingTm]  = useState(false);
+  const [tab,       setTab]       = useState("info");
+  const [waNum,     setWaNum]     = useState("");
+  const [waName,    setWaName]    = useState("");
+  const [qrisImg,   setQrisImg]   = useState("");
+  const [banks,     setBanks]     = useState({});
+  const [ewals,     setEwals]     = useState({});
+  const [sName,     setSName]     = useState("KIOS REFRES");
+  const [sAddr,     setSAddr]     = useState("");
+  const [sHours,    setSHours]    = useState("07.00 – 21.00 WIB");
+  const [sTag,      setSTag]      = useState("Belanja Hemat Setiap Hari");
+  const [theme,     setTheme]     = useState("blue");
+
+  useEffect(() => {
+    fetchSettings().then(s => {
+      if (!s) { setLoading(false); return; }
+      setWaNum(s.wa_number || ""); setWaName(s.wa_name || "");
+      setQrisImg(s.qris_image || "");
+      const b = {}; BANKS.forEach(k => { b[k] = s["bank_" + k] || ""; b[k + "_name"] = s["bank_" + k + "_name"] || ""; }); setBanks(b);
+      const ew = {}; EWALLETS.forEach(k => { ew[k] = s[k] || ""; }); setEwals(ew);
+      setSName(s.store_name || "KIOS REFRES"); setSAddr(s.store_address || s.store_addr || ""); setSHours(s.store_hours || "07.00 – 21.00 WIB"); setSTag(s.store_tagline || "Belanja Hemat Setiap Hari");
+      setTheme(s.store_theme || "blue");
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  const saveInfo  = async () => { setSaving(true); try { await saveSettings({ store_name: sName, store_address: sAddr, store_addr: sAddr, store_hours: sHours, store_tagline: sTag }); toast.add("✅ Info toko disimpan"); } catch (e) { toast.add("Gagal: " + e.message, "err"); } setSaving(false); };
+  const saveWA    = async () => { setSaving(true); try { await saveSettings({ wa_number: waNum, wa_name: waName }); toast.add("✅ WA disimpan"); } catch (e) { toast.add("Gagal: " + e.message, "err"); } setSaving(false); };
+  const saveQRIS  = async () => { setSaving(true); try { await saveSetting("qris_image", qrisImg); toast.add("✅ QRIS disimpan"); } catch (e) { toast.add("Gagal: " + e.message, "err"); } setSaving(false); };
+  const saveBanks = async () => { setSaving(true); try { const obj = {}; BANKS.forEach(k => { obj["bank_" + k] = banks[k] || ""; obj["bank_" + k + "_name"] = banks[k + "_name"] || ""; }); EWALLETS.forEach(k => { obj[k] = ewals[k] || ""; }); await saveSettings(obj); toast.add("✅ Rekening & E-Wallet disimpan"); } catch (e) { toast.add("Gagal: " + e.message, "err"); } setSaving(false); };
+
+  /* ✅ Real-time theme: simpan ke Supabase → subscribeSettings di AdminStandalone & App.jsx
+     akan menangkap event → applyTheme() berjalan otomatis di sisi pembeli */
+  const applyTheme = async themeId => {
+    setSavingTm(true);
+    setTheme(themeId);
+    const root = document.documentElement;
+    Array.from(root.classList).filter(c => c.startsWith("theme-")).forEach(c => root.classList.remove(c));
+    root.classList.add("theme-" + themeId);
+    try { await saveSetting("store_theme", themeId); toast.add("✅ Tema berubah real-time di tampilan pembeli!"); }
+    catch (e) { toast.add("Gagal: " + e.message, "err"); }
+    setSavingTm(false);
+  };
+
+  const TABS = [
+    { id: "info", icon: "🏪", label: "Info Toko" },
+    { id: "tema", icon: "🎨", label: "Tema Warna" },
+    { id: "wa",   icon: "💬", label: "WhatsApp" },
+    { id: "bank", icon: "🏦", label: "Rekening & E-Wallet" },
+    { id: "qris", icon: "📷", label: "QRIS" },
+  ];
+
+  if (loading) return <div style={{ padding: 48, textAlign: "center" }}><Spinner size={32} /><p style={{ marginTop: 12, color: "#64748B" }}>Memuat pengaturan…</p></div>;
+  const curTheme = THEMES.find(t => t.id === theme) || THEMES[0];
+
+  return (
+    <div style={{ padding: "22px 20px 48px", maxWidth: 780 }}>
+      <div style={{ marginBottom: 18 }}><h2 style={{ fontWeight: 900, fontSize: 19, color: "#0F172A" }}>Pengaturan Toko</h2><p style={{ color: "#64748B", fontSize: 13 }}>Kelola semua konfigurasi toko</p></div>
+      <div className="noscroll" style={{ display: "flex", gap: 7, overflowX: "auto", marginBottom: 22, paddingBottom: 4 }}>
+        {TABS.map(t => <button key={t.id} onClick={() => setTab(t.id)} style={{ flexShrink: 0, padding: "9px 16px", borderRadius: 12, border: `1.5px solid ${tab === t.id ? "#2563EB" : "#E2E8F0"}`, background: tab === t.id ? "#2563EB" : "#fff", color: tab === t.id ? "#fff" : "#64748B", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 7, transition: "all .15s" }}>{t.icon} {t.label}</button>)}
+      </div>
+
+      {tab === "info" && <div className="card" style={{ padding: 22 }}>
+        <h3 style={{ fontWeight: 900, fontSize: 15, marginBottom: 16 }}>🏪 Informasi Toko</h3>
+        <Field label="Nama Toko"><input className="inp" value={sName} onChange={e => setSName(e.target.value)} placeholder="KIOS REFRES" /></Field>
+        <Field label="Tagline / Slogan"><input className="inp" value={sTag} onChange={e => setSTag(e.target.value)} placeholder="Belanja Hemat Setiap Hari" /></Field>
+        <Field label="Alamat"><textarea className="inp" value={sAddr} onChange={e => setSAddr(e.target.value)} placeholder="Alamat toko lengkap" rows={2} style={{ resize: "vertical" }} /></Field>
+        <Field label="Jam Operasional"><input className="inp" value={sHours} onChange={e => setSHours(e.target.value)} placeholder="07.00 – 21.00 WIB" /></Field>
+        <button onClick={saveInfo} disabled={saving} className="btn btn-primary">{saving ? <><Spinner size={14} /> Menyimpan…</> : "💾 Simpan Info Toko"}</button>
+      </div>}
+
+      {tab === "tema" && <div>
+        <div className="card" style={{ padding: 22, marginBottom: 14 }}>
+          <h3 style={{ fontWeight: 900, fontSize: 15, marginBottom: 6 }}>🎨 Tema Tampilan Pembeli</h3>
+          <p style={{ color: "#64748B", fontSize: 13, marginBottom: 20, lineHeight: 1.65 }}>
+            Pilih tema di bawah — tampilan pembeli <strong>langsung berubah secara real-time</strong> tanpa perlu reload halaman.
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 20 }}>
+            {THEMES.map(t => (
+              <button key={t.id} onClick={() => applyTheme(t.id)} disabled={savingTm}
+                style={{ padding: "16px 8px", borderRadius: 16, border: `2.5px solid ${theme === t.id ? "#0F172A" : "transparent"}`, background: theme === t.id ? "#F0F4FF" : "#F8FAFC", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 9, transition: "all .2s", transform: theme === t.id ? "scale(1.05)" : "scale(1)", boxShadow: theme === t.id ? "0 4px 16px rgba(0,0,0,.1)" : "none", opacity: savingTm && theme !== t.id ? .55 : 1 }}>
+                <div style={{ display: "flex" }}>
+                  {t.colors.map((c, i) => <div key={i} style={{ width: 20, height: 20, borderRadius: "50%", background: c, border: "2px solid #fff", marginLeft: i > 0 ? -7 : 0, boxShadow: "0 1px 4px rgba(0,0,0,.15)" }} />)}
+                </div>
+                <span style={{ fontSize: 12, fontWeight: 800, color: theme === t.id ? "#0F172A" : "#64748B" }}>{t.label}</span>
+                {theme === t.id && (savingTm ? <Spinner size={11} /> : <span style={{ fontSize: 10, color: "#059669", fontWeight: 900 }}>✓ Aktif</span>)}
+              </button>
+            ))}
+          </div>
+          <div style={{ background: "#EFF6FF", border: "1.5px solid #BFDBFE", borderRadius: 12, padding: "13px 16px", display: "flex", gap: 11 }}>
+            <span style={{ fontSize: 20 }}>💡</span>
+            <div>
+              <p style={{ fontWeight: 800, color: "#1D4ED8", fontSize: 13, marginBottom: 3 }}>Cara kerja real-time</p>
+              <p style={{ fontSize: 12, color: "#2563EB", lineHeight: 1.65 }}>Tema tersimpan ke Supabase → <code style={{ background: "#DBEAFE", padding: "1px 5px", borderRadius: 4 }}>subscribeSettings</code> menangkap perubahan → <code style={{ background: "#DBEAFE", padding: "1px 5px", borderRadius: 4 }}>applyTheme()</code> berjalan di sisi pembeli otomatis.</p>
+            </div>
+          </div>
+        </div>
+        <div className="card" style={{ padding: 18 }}>
+          <p style={{ fontWeight: 800, fontSize: 13, marginBottom: 12 }}>Preview Tema: <span style={{ color: curTheme.colors[0] }}>{curTheme.label}</span></p>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: "1 1 120px", height: 52, borderRadius: 12, background: `linear-gradient(135deg,${curTheme.colors[1]},${curTheme.colors[0]})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 900, fontSize: 12 }}>🛒 Hero Navbar</div>
+            <div style={{ width: 80, height: 52, borderRadius: 12, background: curTheme.colors[0], display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 900, fontSize: 11 }}>Tombol</div>
+            <div style={{ flex: "1 1 100px", height: 52, borderRadius: 12, background: curTheme.colors[2], border: `2px solid ${curTheme.colors[0]}`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 11, color: curTheme.colors[0] }}>Card Produk</div>
+          </div>
+        </div>
+      </div>}
+
+      {tab === "wa" && <div className="card" style={{ padding: 22 }}>
+        <h3 style={{ fontWeight: 900, fontSize: 15, marginBottom: 16 }}>💬 Integrasi WhatsApp</h3>
+        <Field label="Nomor WhatsApp"><input className="inp" value={waNum} onChange={e => setWaNum(e.target.value)} placeholder="628xxxxxxxxxx" /></Field>
+        <Field label="Nama Kontak"><input className="inp" value={waName} onChange={e => setWaName(e.target.value)} placeholder="Admin Toko" /></Field>
+        <div style={{ background: "#F0FDF4", border: "1px solid #A7F3D0", borderRadius: 10, padding: "10px 13px", marginBottom: 14, fontSize: 12, color: "#065F46", fontWeight: 700 }}>💡 Tombol chat WA akan muncul di toko pembeli.</div>
+        <button onClick={saveWA} disabled={saving} className="btn btn-primary">{saving ? "Menyimpan…" : "💾 Simpan WA"}</button>
+      </div>}
+
+      {tab === "bank" && <div>
+        <div className="card" style={{ padding: 22, marginBottom: 14 }}>
+          <h3 style={{ fontWeight: 900, fontSize: 15, marginBottom: 16 }}>🏦 Rekening Bank</h3>
+          {BANKS.map(k => (
+            <Field key={k} label={k.toUpperCase()}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <input className="inp" value={banks[k] || ""} onChange={e => setBanks(p => ({ ...p, [k]: e.target.value }))} placeholder={`No. Rek ${k.toUpperCase()}`} />
+                <input className="inp" value={banks[k + "_name"] || ""} onChange={e => setBanks(p => ({ ...p, [k + "_name"]: e.target.value }))} placeholder="Nama pemilik rekening" />
+              </div>
+            </Field>
+          ))}
+        </div>
+        <div className="card" style={{ padding: 22, marginBottom: 14 }}>
+          <h3 style={{ fontWeight: 900, fontSize: 15, marginBottom: 16 }}>📱 E-Wallet</h3>
+          {EWALLETS.map(k => <Field key={k} label={k.charAt(0).toUpperCase() + k.slice(1)}><input className="inp" value={ewals[k] || ""} onChange={e => setEwals(p => ({ ...p, [k]: e.target.value }))} placeholder={`Nomor ${k}`} /></Field>)}
+        </div>
+        <button onClick={saveBanks} disabled={saving} className="btn btn-primary">{saving ? "Menyimpan…" : "💾 Simpan Rekening & E-Wallet"}</button>
+      </div>}
+
+      {tab === "qris" && <div className="card" style={{ padding: 22 }}>
+        <h3 style={{ fontWeight: 900, fontSize: 15, marginBottom: 16 }}>📷 QRIS Payment</h3>
+        <Field label="URL atau Upload Gambar QRIS">
+          <input className="inp" value={qrisImg} onChange={e => setQrisImg(e.target.value)} placeholder="https://… atau base64" style={{ marginBottom: 8 }} />
+          <label style={{ display: "flex", alignItems: "center", gap: 8, background: "#EFF6FF", border: "1.5px solid #BFDBFE", borderRadius: 9, padding: "9px 13px", cursor: "pointer", fontWeight: 700, fontSize: 13, color: "#2563EB" }}>📷 Upload Gambar QRIS<input type="file" accept="image/*" style={{ display: "none" }} onChange={e => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = ev => setQrisImg(ev.target.result); r.readAsDataURL(f); }} /></label>
+        </Field>
+        {qrisImg && <div style={{ textAlign: "center", marginBottom: 14 }}><img src={qrisImg} alt="QRIS" style={{ maxWidth: 200, borderRadius: 12, border: "2px solid #E2E8F0" }} onError={e => { e.target.style.display = "none"; }} /></div>}
+        <button onClick={saveQRIS} disabled={saving} className="btn btn-primary">{saving ? "Menyimpan…" : "💾 Simpan QRIS"}</button>
+      </div>}
+    </div>
+  );
+}
+
+/* ══════════ STAFF MANAGEMENT ══════════ */
+function StaffMgmt({ currentUser, onUserUpdate, toast }) {
+  const [staff,  setStaff]  = useState([]);
+  const [modal,  setModal]  = useState(false);
+  const [edit,   setEdit]   = useState(null);
+  const [delId,  setDelId]  = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [errs,   setErrs]   = useState({});
+  const [form,   setForm]   = useState({ username: "", name: "", password: "", role: "staff", phone: "" });
+  useEffect(() => { fetchStaff().then(setStaff).catch(() => {}); const ch = subscribeStaff(() => fetchStaff().then(setStaff).catch(console.error)); return () => { try { ch.unsubscribe(); } catch {} }; }, []);
+  const sf = (k, v) => { setForm(p => ({ ...p, [k]: v })); setErrs(p => ({ ...p, [k]: "" })); };
+  const openAdd  = () => { setEdit(null); setForm({ username: "", name: "", password: "", role: "staff", phone: "" }); setErrs({}); setModal(true); };
+  const openEdit = s => { setEdit(s); setForm({ username: s.username, name: s.name || "", password: "", role: s.role || "staff", phone: s.phone || "" }); setErrs({}); setModal(true); };
+  const validate = () => { const e = {}; if (!form.username.trim()) e.username = "Wajib"; if (!edit && !form.password) e.password = "Wajib"; if (!form.name.trim()) e.name = "Wajib"; return e; };
+  const save = async () => { const e = validate(); if (Object.keys(e).length) { setErrs(e); return; } setSaving(true); try { const data = { username: form.username.trim(), name: form.name.trim(), role: form.role, phone: form.phone, is_active: true }; if (form.password) data.password = form.password; if (edit) data.id = edit.id; await saveStaff(data); if (edit && onUserUpdate && edit.id === currentUser?.id) onUserUpdate({ ...currentUser, ...data }); toast.add(edit ? "✅ Staff diperbarui" : "✅ Staff ditambahkan"); setModal(false); } catch (e) { toast.add("Gagal: " + e.message, "err"); } setSaving(false); };
+  const del = async () => { try { await deleteStaff(delId); toast.add("Staff dihapus", "err"); } catch (e) { toast.add("Gagal: " + e.message, "err"); } setDelId(null); };
+  return (
+    <div style={{ padding: "22px 20px 48px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+        <div><h2 style={{ fontWeight: 900, fontSize: 19, color: "#0F172A" }}>Staff & Akun</h2><p style={{ color: "#64748B", fontSize: 13 }}>{staff.length} akun</p></div>
+        <button onClick={openAdd} className="btn btn-primary">+ Tambah Staff</button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 12 }}>
+        {staff.map(s => (
+          <div key={s.id} className="card" style={{ padding: 16, display: "flex", gap: 12, alignItems: "center" }}>
+            <div style={{ width: 46, height: 46, borderRadius: "50%", background: "linear-gradient(135deg,#1E3A8A,#2563EB)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: "#fff", fontSize: 18, flexShrink: 0 }}>{s.username?.[0]?.toUpperCase() || "?"}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontWeight: 900, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name || s.username}</p>
+              <p style={{ fontSize: 12, color: "#64748B" }}>@{s.username}</p>
+              <div style={{ display: "flex", gap: 5, marginTop: 5 }}>
+                <span className={`badge ${s.role === "owner" ? "b-indigo" : "b-blue"}`} style={{ fontSize: 10 }}>{s.role}</span>
+                <span className={`badge ${s.is_active ? "b-green" : "b-gray"}`} style={{ fontSize: 10 }}>{s.is_active ? "Aktif" : "Nonaktif"}</span>
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              <button onClick={() => openEdit(s)} className="btn btn-secondary btn-sm">Edit</button>
+              {s.id !== currentUser?.id && <button onClick={() => setDelId(s.id)} className="btn btn-danger btn-sm">Hapus</button>}
+            </div>
+          </div>
+        ))}
+      </div>
+      <Modal open={modal} onClose={() => setModal(false)} title={edit ? "Edit Staff" : "Tambah Staff"}
+        footer={<><button className="btn btn-ghost btn-sm" onClick={() => setModal(false)}>Batal</button><button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>{saving ? "…" : "💾 Simpan"}</button></>}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 11 }}>
+          <Field label="Username" err={errs.username}><input className={`inp${errs.username ? " inp-err" : ""}`} value={form.username} onChange={e => sf("username", e.target.value)} placeholder="username" /></Field>
+          <Field label="Nama Lengkap" err={errs.name}><input className={`inp${errs.name ? " inp-err" : ""}`} value={form.name} onChange={e => sf("name", e.target.value)} placeholder="Nama lengkap" /></Field>
+        </div>
+        <Field label={edit ? "Password Baru (kosong = tidak diubah)" : "Password"} err={errs.password}><input className={`inp${errs.password ? " inp-err" : ""}`} type="password" value={form.password} onChange={e => sf("password", e.target.value)} placeholder={edit ? "Kosongkan jika tidak diubah" : "Password"} /></Field>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 11 }}>
+          <Field label="Role"><select className="inp" value={form.role} onChange={e => sf("role", e.target.value)}><option value="staff">Staff</option><option value="owner">Owner</option></select></Field>
+          <Field label="Nomor HP"><input className="inp" value={form.phone} onChange={e => sf("phone", e.target.value)} placeholder="08xx-xxxx-xxxx" /></Field>
+        </div>
+      </Modal>
+      <Confirm open={!!delId} onClose={() => setDelId(null)} onOk={del} danger title="Hapus Staff" msg="Yakin hapus akun staff ini?" />
+    </div>
+  );
+}
+
+/* ══════════ LAPORAN & ANALITIK ══════════ */
+function LaporanPage({ orders, products }) {
+  const [period, setPeriod] = useState(30);
+  const since = new Date(); since.setDate(since.getDate() - period);
+  const fil = (orders || []).filter(o => new Date(o.created_at || o.order_date || 0) >= since);
+  const revenue = fil.filter(o => o.order_status === "selesai").reduce((s, o) => s + (o.total_price || 0), 0);
+  const statusCount = {}; fil.forEach(o => { statusCount[o.order_status] = (statusCount[o.order_status] || 0) + 1; });
+  const payCount = {}; fil.forEach(o => { const m = o.payment_method || "Lainnya"; payCount[m] = (payCount[m] || 0) + 1; });
+  const topProds = {}; fil.forEach(o => parseProducts(o.products).forEach(i => { if (!topProds[i.name]) topProds[i.name] = { qty: 0, rev: 0 }; topProds[i.name].qty += i.qty; topProds[i.name].rev += i.price * i.qty; }));
+  const topList = Object.entries(topProds).sort((a, b) => b[1].rev - a[1].rev).slice(0, 10);
+  return (
+    <div style={{ padding: "22px 20px 48px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
+        <div><h2 style={{ fontWeight: 900, fontSize: 19, color: "#0F172A" }}>Laporan & Analitik</h2><p style={{ color: "#64748B", fontSize: 13 }}>Periode {period} hari terakhir</p></div>
+        <div style={{ display: "flex", gap: 7 }}>{[7, 30, 90].map(d => <button key={d} onClick={() => setPeriod(d)} style={{ padding: "6px 14px", borderRadius: 99, border: `1.5px solid ${period === d ? "#2563EB" : "#E2E8F0"}`, background: period === d ? "#2563EB" : "#fff", color: period === d ? "#fff" : "#64748B", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>{d}H</button>)}</div>
+      </div>
+      <div className="stat-grid" style={{ marginBottom: 18 }}>
+        <StatCard icon="🧾" label="Total Pesanan" value={fil.length}                    sub={`${period} hari`}         color="#2563EB" bg="#EFF6FF" />
+        <StatCard icon="💰" label="Pendapatan"    value={fmt(revenue)}                  sub="pesanan selesai"          color="#059669" bg="#D1FAE5" />
+        <StatCard icon="✅" label="Selesai"        value={statusCount.selesai || 0}      sub="pesanan"                  color="#059669" bg="#D1FAE5" />
+        <StatCard icon="✕"  label="Dibatalkan"    value={statusCount.dibatalkan || 0}   sub="pesanan"                  color="#EF4444" bg="#FEE2E2" />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 18 }}>
+        <div className="card" style={{ padding: 18 }}>
+          <h3 style={{ fontWeight: 900, fontSize: 14, marginBottom: 14 }}>📊 Status Pesanan</h3>
+          {Object.entries(statusCount).length === 0 ? <p style={{ color: "#94A3B8", fontSize: 13 }}>Tidak ada data</p> : Object.entries(statusCount).map(([k, v]) => (<div key={k} style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}><span style={{ fontSize: 12, fontWeight: 700 }}>{k.replace(/_/g, " ")}</span><span className="badge b-blue">{v}</span></div>))}
+        </div>
+        <div className="card" style={{ padding: 18 }}>
+          <h3 style={{ fontWeight: 900, fontSize: 14, marginBottom: 14 }}>💳 Metode Bayar</h3>
+          {Object.entries(payCount).length === 0 ? <p style={{ color: "#94A3B8", fontSize: 13 }}>Tidak ada data</p> : Object.entries(payCount).map(([k, v]) => (<div key={k} style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}><span style={{ fontSize: 12, fontWeight: 700 }}>{k}</span><span className="badge b-green">{v}x</span></div>))}
+        </div>
+      </div>
+      {topList.length > 0 && <div className="card" style={{ overflow: "hidden" }}>
+        <div style={{ padding: "14px 18px", borderBottom: "1px solid #F1F5F9", fontWeight: 900, fontSize: 14 }}>🏆 Produk Terlaris</div>
+        <table className="tbl"><thead><tr><th>#</th><th>Produk</th><th>Qty</th><th>Pendapatan</th></tr></thead>
+          <tbody>{topList.map(([name, d], i) => (<tr key={name}><td style={{ fontWeight: 900, color: i < 3 ? "#F59E0B" : "#94A3B8" }}>{i < 3 ? "🏆" : "#"}{i + 1}</td><td style={{ fontWeight: 800 }}>{name}</td><td><span className="badge b-blue">{d.qty} pcs</span></td><td style={{ fontWeight: 900, color: "#2563EB" }}>{fmt(d.rev)}</td></tr>))}</tbody>
+        </table>
+      </div>}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════
+   ADMIN APP — ENTRY POINT
+   ✅ CRITICAL FIX: useToast() SELALU dipanggil tanpa kondisi.
+   Bug sebelumnya: `const toast = toastExt || useToast()`
+   → Ini conditional hook → melanggar Rules of Hooks → crash React.
+   Fix: panggil useToast() tanpa syarat, lalu pilih mana yang dipakai.
+══════════════════════════════════════════════════ */
+export function AdminApp({
+  user, onLogout, onUserUpdate,
+  products, setProducts,
   orders: ordersInit, setOrders: setOrdersExt,
   categories: catsInit, setCategories: setCatsExt,
-  dbError }) {
+  dbError,
+  toast: toastExt,
+}) {
+  const [menu,       setMenu]       = useState("dashboard");
+  const [sOpen,      setSOpen]      = useState(false);
+  const [orders,     setOrdersL]    = useState(ordersInit || []);
+  const [categories, setCatsL]      = useState(catsInit || []);
+  const [loadOrders, setLoadOrders] = useState(false);
 
-  const [menu,   setMenu]  = useState("dashboard");
-  const [sOpen,  setSOpen] = useState(false);
-  const [orders,     setOrdersLocal]     = useState(ordersInit||[]);
-  const [categories, setCategoriesLocal] = useState(catsInit||["Minuman","Snack","Makanan Instan","Kebutuhan Harian"]);
-  const [loadingOrders, setLoadingOrders] = useState(!ordersInit);
-  const toast = useToast();
+  // ✅ useToast() SELALU dipanggil tanpa kondisi — tidak pernah bersyarat
+  const localToast = useToast();
+  // Setelah hook dipanggil, baru pilih mana yang dipakai
+  const toast = toastExt || localToast;
 
-  const setOrders     = (v) => { setOrdersLocal(v);     if(setOrdersExt)     setOrdersExt(v); };
-  const setCategories = (v) => { setCategoriesLocal(v); if(setCatsExt) setCatsExt(v); };
+  const setOrders = useCallback(v => { setOrdersL(v); if (setOrdersExt) setOrdersExt(v); }, [setOrdersExt]);
+  const setCats   = useCallback(v => { setCatsL(v);   if (setCatsExt)   setCatsExt(v);   }, [setCatsExt]);
 
-  // Sync jika parent kirim ordersInit setelah mount
-  useEffect(()=>{ if(ordersInit) setOrdersLocal(ordersInit); }, [ordersInit]);
-  useEffect(()=>{ if(catsInit)   setCategoriesLocal(catsInit); }, [catsInit]);
+  useEffect(() => { if (ordersInit !== undefined) setOrdersL(ordersInit || []); }, [ordersInit]);
+  useEffect(() => { if (catsInit !== undefined)   setCatsL(catsInit || []);    }, [catsInit]);
 
-  useEffect(()=>{
-    if(ordersInit) { setLoadingOrders(false); return; } // sudah dari parent
-    let cleanup=()=>{};
-    async function load(){
-      try{
+  useEffect(() => {
+    // Jika orders sudah disupply dari parent, tidak perlu load sendiri
+    if (ordersInit && ordersInit.length > 0) return;
+    let cleanup = () => {};
+    (async () => {
+      setLoadOrders(true);
+      try {
         const [data, cats] = await Promise.all([fetchOrders(), fetchCategories()]);
-        setOrdersLocal(data||[]);
-        if(cats.length) setCategoriesLocal(cats);
-        setLoadingOrders(false);
-        const ch = subscribeOrders(
-          (n)=>{ setOrdersLocal(prev=>{ if(prev.find(o=>o.order_id===n.order_id)) return prev; toast.add("🔔 Pesanan baru dari "+n.customer_name+"!","info"); return [n,...prev]; }); },
-          (u)=>setOrdersLocal(prev=>prev.map(o=>o.order_id===u.order_id?u:o))
+        setOrdersL(data || []);
+        if (cats && cats.length) setCatsL(cats);
+        const oCh = subscribeOrders(
+          n   => setOrdersL(prev => prev.find(o => o.order_id === n.order_id) ? prev : [n, ...prev]),
+          upd => setOrdersL(prev => prev.map(o => o.order_id === upd.order_id ? { ...o, ...upd } : o))
         );
-        const catCh = subscribeCategories(()=>fetchCategories().then(c=>{if(c.length)setCategoriesLocal(c);}).catch(console.error));
-        cleanup=()=>{ ch.unsubscribe(); catCh.unsubscribe(); };
-      }catch(e){
-        console.error("Admin load error:",e);
-        setLoadingOrders(false);
-        toast.add("Gagal memuat data","err");
-      }
-    }
-    load();
-    return ()=>cleanup();
-  },[]);
+        const cCh = subscribeCategories(() => fetchCategories().then(c => { if (c && c.length) setCatsL(c); }).catch(console.error));
+        cleanup = () => { try { oCh.unsubscribe(); cCh.unsubscribe(); } catch {} };
+      } catch { toast.add("Gagal memuat data", "err"); }
+      setLoadOrders(false);
+    })();
+    return () => cleanup();
+  }, []);
 
-  const titles = {dashboard:"📊 Dashboard",products:"📦 Manajemen Produk",categories:"🏷️ Kelola Kategori",orders:"🧾 Manajemen Pesanan",vouchers:"🎟️ Voucher & Promo",laporan:"📈 Laporan & Analitik",staff:"👥 Staff & Akun",settings:"⚙️ Pengaturan"};
-  const pending = orders.filter(o=>o.order_status==="diproses").length;
+  const titles = { dashboard: "📊 Dashboard", products: "📦 Manajemen Produk", categories: "🏷️ Kelola Kategori", orders: "🧾 Manajemen Pesanan", vouchers: "🎟️ Voucher & Promo", laporan: "📈 Laporan & Analitik", staff: "👥 Staff & Akun", settings: "⚙️ Pengaturan" };
+  const pendingCnt    = (orders || []).filter(o => o.order_status === "diproses").length;
+  const konfirmasiCnt = (orders || []).filter(o => o.order_status === "menunggu_konfirmasi").length;
+  const alertCount    = pendingCnt + konfirmasiCnt;
 
-  return(
+  return (
     <div className="admin-layout">
-      <ToastBox list={toast.list} remove={toast.remove}/>
-      <Sidebar active={menu} setActive={setMenu} user={user} onLogout={onLogout} open={sOpen} onClose={()=>setSOpen(false)} pendingCount={pending}/>
+      {/* Render ToastBox lokal hanya jika toastExt tidak ada dari parent */}
+      {!toastExt && <ToastBox list={localToast.list} remove={localToast.remove} />}
+      <Sidebar active={menu} setActive={setMenu} user={user} onLogout={onLogout} open={sOpen} onClose={() => setSOpen(false)} alertCount={alertCount} />
       <div className="admin-main">
-        <Topbar title={titles[menu]||"Dashboard"} onMenu={()=>setSOpen(p=>!p)} user={user}/>
-        <div style={{background:"#F0F4FF",minHeight:"calc(100vh - 56px)"}}>
-          {!dbError&&(
-            <div style={{background:"#D1FAE5",borderBottom:"1px solid #6EE7B7",padding:"6px 18px",fontSize:12,fontWeight:700,color:"#065F46",display:"flex",alignItems:"center",gap:6}}>
-              <span style={{width:7,height:7,borderRadius:"50%",background:"#10B981",display:"inline-block"}}/>
-              Terhubung — Semua data real-time dari Supabase
-            </div>
-          )}
-          {loadingOrders
-            ?<div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:60,gap:14,flexDirection:"column"}}><Spinner size={36}/><p style={{fontWeight:700,color:"#64748B"}}>Memuat data...</p></div>
-            :<>
-              {menu==="dashboard" && <Dashboard products={products} orders={orders}/>}
-              {menu==="products"  && <ProductsMgmt products={products} setProducts={setProducts} toast={toast} categories={categories} setCategories={setCategories}/>}
-              {menu==="categories" && <CatMgmt categories={categories} setCategories={setCategories} toast={toast} standalone/>}
-              {menu==="vouchers"   && <VoucherMgmt toast={toast}/>}
-              {menu==="laporan"    && <LaporanPage orders={orders} products={products}/>}
-              {menu==="orders"    && <OrdersMgmt orders={orders} setOrders={setOrders} toast={toast}/>}
-              {menu==="staff"     && <StaffMgmt currentUser={user} onUserUpdate={onUserUpdate} toast={toast}/>}
-              {menu==="settings"  && <Settings user={user} toast={toast}/>}
+        <Topbar title={titles[menu] || "Dashboard"} onMenu={() => setSOpen(p => !p)} user={user} />
+        <div style={{ background: "#F1F5F9", minHeight: "calc(100vh - 56px)" }}>
+          <div style={{ background: dbError ? "#FEE2E2" : "#D1FAE5", borderBottom: `1px solid ${dbError ? "#FECACA" : "#6EE7B7"}`, padding: "5px 18px", fontSize: 12, fontWeight: 700, color: dbError ? "#991B1B" : "#065F46", display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: dbError ? "#EF4444" : "#10B981", display: "inline-block" }} />
+            {dbError ? "⚠️ Mode Offline — data dari cache lokal" : "Terhubung · Data real-time dari Supabase"}
+            {konfirmasiCnt > 0 && <button onClick={() => setMenu("orders")} style={{ marginLeft: "auto", background: "#7C3AED", color: "#fff", border: "none", borderRadius: 99, padding: "2px 11px", fontSize: 11, fontWeight: 900, cursor: "pointer" }}>🔔 {konfirmasiCnt} konfirmasi bayar</button>}
+          </div>
+          {loadOrders
+            ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 64, gap: 14, flexDirection: "column" }}><Spinner size={36} /><p style={{ fontWeight: 700, color: "#64748B" }}>Memuat data…</p></div>
+            : <>
+              {menu === "dashboard"  && <Dashboard    products={products || []} orders={orders}              onNavigate={setMenu} />}
+              {menu === "products"   && <ProductsMgmt products={products || []} setProducts={setProducts}    toast={toast} categories={categories} />}
+              {menu === "categories" && <CatMgmt      categories={categories}   setCategories={setCats}      toast={toast} standalone />}
+              {menu === "vouchers"   && <VoucherMgmt  toast={toast} />}
+              {menu === "laporan"    && <LaporanPage  orders={orders}           products={products || []} />}
+              {menu === "orders"     && <OrdersMgmt   orders={orders}           setOrders={setOrders}        toast={toast} />}
+              {menu === "staff"      && <StaffMgmt    currentUser={user}        onUserUpdate={onUserUpdate}  toast={toast} />}
+              {menu === "settings"   && <Settings     toast={toast} />}
             </>
           }
         </div>
       </div>
-    </div>
-  );
-}
-
-/* ══════ LAPORAN & ANALITIK ══════ */
-function computeStats(orders, period) {
-  const since = new Date(); since.setDate(since.getDate() - period);
-  const filtered = orders.filter(o => new Date(o.created_at||o.order_date||0) >= since);
-  const byDay = {};
-  filtered.forEach(o => {
-    const d = (o.created_at||o.order_date||"").slice(0,10); if(!d) return;
-    if(!byDay[d]) byDay[d]={date:d,revenue:0,count:0};
-    byDay[d].revenue += o.total_price||0; byDay[d].count++;
-  });
-  const statusCount = {diproses:0,dikirim:0,selesai:0,dibatalkan:0};
-  filtered.forEach(o=>{ if(statusCount[o.order_status]!==undefined) statusCount[o.order_status]++; });
-  const paymentCount = {};
-  filtered.forEach(o=>{ const m=o.payment_method||"Lainnya"; paymentCount[m]=(paymentCount[m]||0)+1; });
-  const totalRevenue  = filtered.filter(o=>o.order_status==="selesai").reduce((s,o)=>s+o.total_price,0);
-  const totalOrders   = filtered.length;
-  const successRate   = totalOrders?Math.round(statusCount.selesai/totalOrders*100):0;
-  const avgOrderValue = statusCount.selesai?Math.round(totalRevenue/statusCount.selesai):0;
-  return { dailyData:Object.values(byDay).sort((a,b)=>a.date.localeCompare(b.date)), statusCount, paymentCount, totalRevenue, totalOrders, successRate, avgOrderValue };
-}
-function computeProductStats(products) {
-  const outOfStock = products.filter(p=>p.stock===0).length;
-  const lowStock   = products.filter(p=>p.stock>0&&p.stock<10).length;
-  const topSelling = [...products].sort((a,b)=>b.sold-a.sold).slice(0,5);
-  const totalInventory = products.reduce((s,p)=>s+p.stock,0);
-  return { totalProducts:products.length, outOfStock, lowStock, topSelling, totalInventory };
-}
-
-function LaporanPage({ orders, products }) {
-  const [period,  setPeriod]  = useState(30);
-  const stats  = computeStats(orders, period);
-  const pStats = computeProductStats(products);
-
-  // Hitung dari data orders prop (untuk realtime)
-  const now = new Date();
-  const todayStr = now.toISOString().slice(0,10);
-  const todayOrders  = orders.filter(o=>(o.created_at||o.order_date||"").startsWith(todayStr));
-  const todayRevenue = todayOrders.filter(o=>o.order_status==="selesai").reduce((s,o)=>s+o.total_price,0);
-
-  const exportCSVLaporan = () => {
-    if (!stats) return;
-    const rows = [
-      ["Tanggal","Jumlah Pesanan","Pendapatan"],
-      ...stats.dailyData.map(d=>[d.date, d.count, d.revenue])
-    ];
-    const csv = rows.map(r=>r.join(",")).join("\n");
-    const blob = new Blob([csv],{type:"text/csv"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href=url; a.download=`laporan-${period}hari-${Date.now()}.csv`; a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  return (
-    <div style={{padding:"20px 18px 60px",maxWidth:800}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
-        <div>
-          <h2 style={{fontWeight:900,fontSize:19}}>📈 Laporan & Analitik</h2>
-          <p style={{color:"#64748B",fontSize:13}}>Data performa toko Anda · Realtime</p>
-        </div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <select className="inp" value={period} onChange={e=>setPeriod(+e.target.value)} style={{width:"auto"}}>
-            <option value={7}>7 Hari</option>
-            <option value={30}>30 Hari</option>
-            <option value={90}>3 Bulan</option>
-          </select>
-          <button onClick={exportCSVLaporan} className="btn btn-secondary btn-sm">📥 Export</button>
-        </div>
-      </div>
-
-      {/* Stat Hari Ini */}
-      <div style={{background:"linear-gradient(135deg,#1E3A8A,#2563EB)",borderRadius:16,padding:"18px 20px",marginBottom:20,color:"#fff"}}>
-        <p style={{opacity:.7,fontSize:12,fontWeight:700,marginBottom:10}}>📅 HARI INI</p>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-          <div><p style={{fontSize:24,fontWeight:900}}>{todayOrders.length}</p><p style={{opacity:.7,fontSize:12}}>Pesanan masuk</p></div>
-          <div><p style={{fontSize:20,fontWeight:900}}>{fmt(todayRevenue)}</p><p style={{opacity:.7,fontSize:12}}>Pendapatan selesai</p></div>
-        </div>
-      </div>
-
-      {stats && <>
-        {/* Stat Periode */}
-        <div className="stat-grid" style={{marginBottom:20}}>
-          <StatCard icon="💰" label={`Pendapatan (${period}hr)`} value={fmt(stats.totalRevenue)} color="#059669" bg="#D1FAE5" sub="Order selesai"/>
-          <StatCard icon="🧾" label={`Total Pesanan`}           value={stats.totalOrders}        color="#2563EB" bg="#EFF6FF" sub={`${period} hari terakhir`}/>
-          <StatCard icon="✅" label="Tingkat Berhasil"           value={stats.successRate+"%"}    color="#6366F1" bg="#EEF2FF" sub="Order selesai/total"/>
-          <StatCard icon="💵" label="Rata-rata Order"            value={fmt(stats.avgOrderValue)} color="#F59E0B" bg="#FEF3C7" sub="Per transaksi selesai"/>
-        </div>
-
-        {/* Status Breakdown */}
-        <div className="card" style={{padding:20,marginBottom:18}}>
-          <p style={{fontWeight:800,fontSize:14,marginBottom:14}}>📊 Status Pesanan</p>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
-            {[
-              {label:"Diproses",key:"diproses",color:"#F59E0B",bg:"#FEF3C7"},
-              {label:"Dikirim", key:"dikirim", color:"#3B82F6",bg:"#EFF6FF"},
-              {label:"Selesai", key:"selesai", color:"#10B981",bg:"#D1FAE5"},
-              {label:"Dibatalkan",key:"dibatalkan",color:"#EF4444",bg:"#FEE2E2"},
-            ].map(({label,key,color,bg})=>{
-              const count = stats.statusCount[key]||0;
-              const pct   = stats.totalOrders ? Math.round(count/stats.totalOrders*100) : 0;
-              return (
-                <div key={key} style={{background:bg,borderRadius:12,padding:"14px 16px"}}>
-                  <p style={{fontSize:24,fontWeight:900,color}}>{count}</p>
-                  <p style={{fontSize:13,fontWeight:700,color}}>{label}</p>
-                  <div style={{height:4,background:"rgba(0,0,0,.08)",borderRadius:99,marginTop:8}}>
-                    <div style={{height:"100%",background:color,borderRadius:99,width:pct+"%",transition:"width .5s"}}/>
-                  </div>
-                  <p style={{fontSize:11,color,marginTop:4,fontWeight:700}}>{pct}%</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Metode Pembayaran */}
-        <div className="card" style={{padding:20,marginBottom:18}}>
-          <p style={{fontWeight:800,fontSize:14,marginBottom:14}}>💳 Metode Pembayaran Terpopuler</p>
-          {Object.entries(stats.paymentCount).sort((a,b)=>b[1]-a[1]).map(([method,count])=>{
-            const pct = stats.totalOrders ? Math.round(count/stats.totalOrders*100) : 0;
-            return (
-              <div key={method} style={{marginBottom:10}}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-                  <span style={{fontSize:13,fontWeight:700}}>{method}</span>
-                  <span style={{fontSize:13,color:"#64748B"}}>{count}x · {pct}%</span>
-                </div>
-                <div style={{height:6,background:"#F1F5F9",borderRadius:99}}>
-                  <div style={{height:"100%",background:"#2563EB",borderRadius:99,width:pct+"%",transition:"width .5s"}}/>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Omzet harian (text-based chart) */}
-        <div className="card" style={{padding:20,marginBottom:18}}>
-          <p style={{fontWeight:800,fontSize:14,marginBottom:14}}>📅 Omzet Harian (7 hari terakhir)</p>
-          {stats.dailyData.slice(-7).map(d=>{
-            const maxRev = Math.max(...stats.dailyData.map(x=>x.revenue),1);
-            const pct = Math.round(d.revenue/maxRev*100);
-            return (
-              <div key={d.date} style={{marginBottom:8}}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-                  <span style={{fontSize:12,color:"#64748B"}}>{d.date.slice(5)}</span>
-                  <span style={{fontSize:12,fontWeight:700,color:"#2563EB"}}>{fmt(d.revenue)} ({d.count} order)</span>
-                </div>
-                <div style={{height:8,background:"#F1F5F9",borderRadius:99}}>
-                  <div style={{height:"100%",background:"linear-gradient(90deg,#2563EB,#60A5FA)",borderRadius:99,width:pct+"%",transition:"width .5s"}}/>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </>}
-
-      {/* Produk stats */}
-      {pStats && (
-        <div className="card" style={{padding:20}}>
-          <p style={{fontWeight:800,fontSize:14,marginBottom:14}}>🏆 Produk Terlaris</p>
-          {pStats.topSelling.map((p,i)=>(
-            <div key={p.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:i<4?"1px solid #F1F5F9":"none"}}>
-              <span style={{width:24,fontWeight:900,color:"#94A3B8",fontSize:13}}>#{i+1}</span>
-              <img src={p.img} alt={p.name} style={{width:40,height:40,objectFit:"cover",borderRadius:9,flexShrink:0}} onError={e=>{e.target.src="https://via.placeholder.com/40?text=📦";}}/>
-              <div style={{flex:1}}>
-                <p style={{fontWeight:800,fontSize:13}}>{p.name}</p>
-                <p style={{fontSize:11,color:"#64748B"}}>{p.sold} terjual · Stok: {p.stock}</p>
-              </div>
-              <p style={{fontWeight:900,color:"#2563EB",fontSize:13}}>{fmt(p.price)}</p>
-            </div>
-          ))}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginTop:14,paddingTop:14,borderTop:"1px solid #F1F5F9"}}>
-            <div style={{textAlign:"center"}}>
-              <p style={{fontSize:22,fontWeight:900,color:"#EF4444"}}>{pStats.outOfStock}</p>
-              <p style={{fontSize:11,color:"#64748B"}}>Habis</p>
-            </div>
-            <div style={{textAlign:"center"}}>
-              <p style={{fontSize:22,fontWeight:900,color:"#F59E0B"}}>{pStats.lowStock}</p>
-              <p style={{fontSize:11,color:"#64748B"}}>Stok Kritis</p>
-            </div>
-            <div style={{textAlign:"center"}}>
-              <p style={{fontSize:22,fontWeight:900,color:"#10B981"}}>{pStats.totalInventory}</p>
-              <p style={{fontSize:11,color:"#64748B"}}>Total Unit</p>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ══════ VOUCHER MANAGEMENT ══════ */
-function VoucherMgmt({ toast }) {
-  const [list,    setList]    = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [modal,   setModal]   = useState(false);
-  const [edit,    setEdit]    = useState(null);
-  const [delId,   setDelId]   = useState(null);
-  const [saving,  setSaving]  = useState(false);
-  const emptyForm = {code:"",type:"percent",value:"",min_purchase:"",expires_at:"",usage_limit:"",description:"",is_active:true};
-  const [form, setForm] = useState(emptyForm);
-
-  useEffect(()=>{
-    fetchAllVouchers().then(setList).catch(()=>toast.add("Gagal load voucher","err")).finally(()=>setLoading(false));
-    // Realtime: auto-refresh saat ada perubahan voucher
-    const ch = subscribeVouchers(() => {
-      fetchAllVouchers().then(setList).catch(console.error);
-    });
-    return () => ch.unsubscribe();
-  },[]);
-
-  const open = (v=null) => {
-    setEdit(v);
-    setForm(v ? {...v, value:v.value+"", min_purchase:v.min_purchase||"", usage_limit:v.usage_limit||"", expires_at:v.expires_at?v.expires_at.slice(0,10):""} : emptyForm);
-    setModal(true);
-  };
-
-  const save = async () => {
-    if(!form.code.trim()||!form.value){ toast.add("Kode dan nilai wajib diisi","err"); return; }
-    setSaving(true);
-    try {
-      const payload = {
-        ...form,
-        code: form.code.toUpperCase().trim(),
-        value: +form.value,
-        min_purchase: form.min_purchase ? +form.min_purchase : null,
-        usage_limit:  form.usage_limit  ? +form.usage_limit  : null,
-        expires_at:   form.expires_at   ? new Date(form.expires_at).toISOString() : null,
-        used_count:   edit?.used_count || 0,
-      };
-      if(edit) payload.id = edit.id;
-      await saveVoucher(payload);
-      await fetchAllVouchers().then(setList);
-      toast.add(edit?"Voucher diperbarui ✅":"Voucher berhasil dibuat ✅");
-      setModal(false);
-    } catch(e) { toast.add("Gagal: "+e.message,"err"); }
-    setSaving(false);
-  };
-
-  const del = async () => {
-    try { await deleteVoucher(delId); setList(p=>p.filter(v=>v.id!==delId)); toast.add("Voucher dihapus","err"); }
-    catch(e) { toast.add("Gagal hapus","err"); }
-    setDelId(null);
-  };
-
-  const sf = (k,v) => setForm(p=>({...p,[k]:v}));
-
-  if(loading) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:60,gap:12}}><Spinner size={28}/><p style={{fontWeight:700,color:"#64748B"}}>Memuat voucher...</p></div>;
-
-  return (
-    <div style={{padding:"20px 18px 60px",maxWidth:700}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
-        <div>
-          <h2 style={{fontWeight:900,fontSize:19}}>🎟️ Voucher & Promo</h2>
-          <p style={{color:"#64748B",fontSize:13}}>{list.length} voucher aktif</p>
-        </div>
-        <button onClick={()=>open()} className="btn btn-primary">+ Buat Voucher</button>
-      </div>
-
-      {!list.length
-        ? <Empty icon="🎟️" title="Belum ada voucher" desc="Buat voucher pertama untuk menarik pembeli"/>
-        : <div style={{display:"flex",flexDirection:"column",gap:11}}>
-            {list.map(v=>(
-              <div key={v.id} className="card" style={{padding:17,border:`1.5px solid ${v.is_active?"#BFDBFE":"#E2E8F0"}`}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:9}}>
-                  <div>
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-                      <span style={{background:"#EFF6FF",border:"1.5px dashed #2563EB",borderRadius:8,padding:"3px 12px",fontWeight:900,fontSize:15,color:"#2563EB",fontFamily:"monospace",letterSpacing:1}}>{v.code}</span>
-                      <span className={`badge ${v.is_active?"b-green":"b-gray"}`} style={{fontSize:11}}>{v.is_active?"Aktif":"Nonaktif"}</span>
-                    </div>
-                    <p style={{fontSize:13,color:"#64748B"}}>{v.description||"Tidak ada deskripsi"}</p>
-                  </div>
-                  <div style={{display:"flex",gap:6,flexShrink:0}}>
-                    <button onClick={()=>open(v)} className="btn btn-secondary btn-sm">Edit</button>
-                    <button onClick={()=>setDelId(v.id)} className="btn btn-danger btn-sm">Hapus</button>
-                  </div>
-                </div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,background:"#F8FAFC",borderRadius:10,padding:11}}>
-                  <div><p style={{fontSize:11,color:"#94A3B8",fontWeight:700}}>NILAI</p><p style={{fontSize:14,fontWeight:900,color:"#2563EB"}}>{v.type==="percent"?v.value+"%":fmt(v.value)}</p></div>
-                  <div><p style={{fontSize:11,color:"#94A3B8",fontWeight:700}}>DIGUNAKAN</p><p style={{fontSize:14,fontWeight:900}}>{v.used_count||0}{v.usage_limit?"/"+v.usage_limit:" kali"}</p></div>
-                  <div><p style={{fontSize:11,color:"#94A3B8",fontWeight:700}}>KADALUARSA</p><p style={{fontSize:12,fontWeight:700}}>{v.expires_at?new Date(v.expires_at).toLocaleDateString("id-ID"):"Selamanya"}</p></div>
-                </div>
-              </div>
-            ))}
-          </div>
-      }
-
-      <Modal open={modal} onClose={()=>setModal(false)} title={edit?"Edit Voucher":"Buat Voucher Baru"}
-        footer={<><button className="btn btn-ghost btn-sm" onClick={()=>setModal(false)}>Batal</button><button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>{saving?"Menyimpan...":"💾 Simpan"}</button></>}>
-        <Field label="Kode Voucher"><input className="inp" value={form.code} onChange={e=>sf("code",e.target.value.toUpperCase())} placeholder="Cth: HEMAT20" style={{fontFamily:"monospace",fontWeight:800,letterSpacing:2,textTransform:"uppercase"}}/></Field>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
-          <Field label="Tipe Diskon">
-            <select className="inp" value={form.type} onChange={e=>sf("type",e.target.value)}>
-              <option value="percent">Persen (%)</option>
-              <option value="fixed">Nominal (Rp)</option>
-            </select>
-          </Field>
-          <Field label={form.type==="percent"?"Nilai (%)":"Nilai (Rp)"}>
-            <input className="inp" type="number" value={form.value} onChange={e=>sf("value",e.target.value)} placeholder={form.type==="percent"?"20":"10000"}/>
-          </Field>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
-          <Field label="Min. Pembelian (Rp)"><input className="inp" type="number" value={form.min_purchase} onChange={e=>sf("min_purchase",e.target.value)} placeholder="Kosongkan = bebas"/></Field>
-          <Field label="Batas Pemakaian"><input className="inp" type="number" value={form.usage_limit} onChange={e=>sf("usage_limit",e.target.value)} placeholder="Kosongkan = tidak terbatas"/></Field>
-        </div>
-        <Field label="Kadaluarsa"><input className="inp" type="date" value={form.expires_at} onChange={e=>sf("expires_at",e.target.value)}/></Field>
-        <Field label="Deskripsi"><input className="inp" value={form.description} onChange={e=>sf("description",e.target.value)} placeholder="Cth: Diskon 20% untuk semua produk"/></Field>
-        <label style={{display:"flex",alignItems:"center",gap:9,cursor:"pointer",marginTop:6}}>
-          <input type="checkbox" checked={form.is_active} onChange={e=>sf("is_active",e.target.checked)} style={{width:16,height:16}}/>
-          <span style={{fontSize:13,fontWeight:700}}>Voucher Aktif</span>
-        </label>
-      </Modal>
-      <Confirm open={!!delId} onClose={()=>setDelId(null)} onOk={del} danger title="Hapus Voucher" msg="Yakin ingin menghapus voucher ini?"/>
     </div>
   );
 }
