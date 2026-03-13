@@ -403,26 +403,36 @@ export function Checkout({ cart, onBack, onSuccess, customer, settings }) {
     try {
       const orderItems = cart.map(i => ({ id: i.id, name: i.name, price: i.price, qty: i.qty, img: i.img || "" }));
       const pickupCode = form.method === "pickup" ? genCode() : null;
+
+      // payment_method pakai label jelas agar Telegram bisa deteksi
+      const payMethodLabel =
+        payGroup === "qris"     ? "QRIS" :
+        payGroup === "transfer" ? "Transfer Bank" :
+        payGroup === "ewallet"  ? "E-Wallet" :
+        payGroup === "cash"     ? "Tunai / COD" : payGroup;
+
       const order = {
-        order_id: genId(),
-        customer_id: customer?.id || null,
-        customer_name: form.name,
-        phone: form.phone,
-        products: JSON.stringify(orderItems),
-        total_price: total,
+        order_id:        genId(),
+        customer_id:     customer?.id || null,
+        customer_name:   form.name,
+        phone:           form.phone,
+        products:        JSON.stringify(orderItems),
+        total_price:     total,
         delivery_method: form.method,
-        address: form.address || null,
-        pickup_code: pickupCode,
-        order_status: payGroup === "cash" ? "menunggu_bayar" : "diproses",
-        order_date: now(),
-        payment_method: payGroup,
-        pay_detail: payGroup === "transfer" ? payDetail : payGroup === "ewallet" ? payDetail : payGroup,
-        voucher_code: voucherData ? voucher.toUpperCase() : null,
+        address:         form.address || null,
+        pickup_code:     pickupCode,
+        order_status:    payGroup === "cash" ? "menunggu_bayar" : "diproses",
+        order_date:      now(),
+        payment_method:  payMethodLabel,
+        pay_detail:      payGroup === "transfer" ? payDetail :
+                         payGroup === "ewallet"  ? payDetail :
+                         payMethodLabel,
+        voucher_code:    voucherData ? voucher.toUpperCase() : null,
         discount_amount: discount || 0,
       };
-      await createOrder(order);
-      await decreaseStock(cart);
+
       if (qrisTimerRef.current) clearInterval(qrisTimerRef.current);
+      // createOrder, decreaseStock, kirimStrukTelegram semua di App.jsx onSuccess
       onSuccess(order);
     } catch (e) { alert("Gagal membuat pesanan: " + e.message); }
     setSubmitting(false);

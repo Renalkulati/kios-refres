@@ -112,25 +112,31 @@ export default function App() {
   }, [toast]);
 
   const onSuccess = async (order) => {
-    try {
-      if (!dbError) {
-        await createOrder(order);
-        await decreaseStock(cart);
-        if (order.voucher_code) useVoucher(order.voucher_code).catch(console.error);
-        kirimStrukTelegram(order).catch(console.error);
-      } else {
-        setOrders(prev => [order, ...prev]);
-        setProducts(prev => prev.map(p => {
-          const item = cart.find(i => i.id === p.id);
-          return item ? { ...p, stock: Math.max(0, p.stock - item.qty), sold: (p.sold || 0) + item.qty } : p;
-        }));
-      }
-    } catch {
-      toast.add("Pesanan tersimpan", "info");
-    }
+    // Simpan ke state dulu agar UI langsung pindah ke success
     setLast(order);
     setCart([]);
     setPage("success");
+
+    // Proses background: simpan ke DB, kurangi stok, kirim Telegram
+    try {
+      if (!dbError) {
+        await createOrder(order);
+        await decreaseStock(
+          // cart sudah berisi item saat dipanggil, tapi state sudah di-clear
+          // jadi kita parse dari order.products
+          (() => { try { return JSON.parse(order.products); } catch { return []; } })()
+        );
+        if (order.voucher_code) useVoucher(order.voucher_code).catch(console.error);
+        // Kirim struk ke Telegram — error tidak mengganggu UI
+        kirimStrukTelegram(order).catch(e => console.error("Telegram gagal:", e));
+      } else {
+        // Mode offline: update state lokal saja
+        setOrders(prev => [order, ...prev]);
+      }
+    } catch (e) {
+      console.error("onSuccess error:", e);
+      toast.add("Pesanan berhasil! Tapi ada kendala koneksi.", "info");
+    }
   };
 
   if (loading || splash) return (
