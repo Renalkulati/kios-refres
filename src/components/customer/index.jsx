@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from "react";
-import { createOrder, decreaseStock, fetchMyOrders, subscribeOrders, fetchSettings, validateVoucher } from "../../lib/db.js";
+import React, { useState, useEffect, useRef } from "react";
+import { createOrder, decreaseStock, validateVoucher, updateOrderStatus } from "../../lib/db.js";
 import { fmt, genCode, genId, now } from "../../utils/index.js";
+import { Field } from "../ui/index.jsx";
 
 /* ─── helpers ─── */
 const parseProducts = p => { if (!p) return []; if (Array.isArray(p)) return p; try { return JSON.parse(p); } catch { return []; } };
@@ -666,8 +667,6 @@ export function Orders({ orders, customerId, onHome }) {
     .sort((a, b) => new Date(b.order_date || 0) - new Date(a.order_date || 0));
 
   const claimPaid = async (orderId) => {
-    const { updateOrderStatus } = await import("../../lib/db.js");
-    setClaiming(true);
     try { await updateOrderStatus(orderId, "menunggu_konfirmasi"); setClaimedIds(p => ({ ...p, [orderId]: true })); }
     catch (e) { alert("Gagal: " + e.message); }
     setClaiming(false);
@@ -765,6 +764,3 @@ export function WAFloatButton({ settings }) {
     <a href={`https://wa.me/${num}?text=${encodeURIComponent("Halo, saya ingin bertanya tentang produk di " + (settings?.store_name || "Kios Refres"))}`} target="_blank" rel="noreferrer" style={{ position: "fixed", bottom: 76, right: 18, width: 52, height: 52, background: "#25D366", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, boxShadow: "0 4px 16px rgba(37,211,102,.4)", zIndex: 99, textDecoration: "none", transition: "transform .2s" }} onMouseOver={e => { e.currentTarget.style.transform = "scale(1.1)"; }} onMouseOut={e => { e.currentTarget.style.transform = "scale(1)"; }}>💬</a>
   );
 }
-
-// React needed for JSX Fragment
-import React from "react";
